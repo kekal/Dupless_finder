@@ -1,0 +1,8 @@
+
+*.pdb
+*.png
+*.jpg
+*.suo
+Dupless_finder/obj/*
+Dupless_finder/bin/*
+Dupless_finder/Dupless_finder.csproj.DotSettings
