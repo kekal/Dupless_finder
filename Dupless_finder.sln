@@ -1,22 +1,41 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 2013
-VisualStudioVersion = 12.0.40629.0
+# Visual Studio 15
+VisualStudioVersion = 15.0.28010.2050
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dupless_finder", "Dupless_finder\Dupless_finder.csproj", "{B41F8B6B-26BE-47A7-BAF0-BF18D60D125F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dupples_finder_UI", "Dupples_finder_UI\Dupples_finder_UI.csproj", "{4D3021F4-00E7-48CE-97EF-685911CDDDC2}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
 		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{B41F8B6B-26BE-47A7-BAF0-BF18D60D125F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{B41F8B6B-26BE-47A7-BAF0-BF18D60D125F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B41F8B6B-26BE-47A7-BAF0-BF18D60D125F}.Debug|x64.ActiveCfg = Debug|x64
+		{B41F8B6B-26BE-47A7-BAF0-BF18D60D125F}.Debug|x64.Build.0 = Debug|x64
 		{B41F8B6B-26BE-47A7-BAF0-BF18D60D125F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B41F8B6B-26BE-47A7-BAF0-BF18D60D125F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B41F8B6B-26BE-47A7-BAF0-BF18D60D125F}.Release|x64.ActiveCfg = Release|x64
+		{B41F8B6B-26BE-47A7-BAF0-BF18D60D125F}.Release|x64.Build.0 = Release|x64
+		{4D3021F4-00E7-48CE-97EF-685911CDDDC2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4D3021F4-00E7-48CE-97EF-685911CDDDC2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4D3021F4-00E7-48CE-97EF-685911CDDDC2}.Debug|x64.ActiveCfg = Debug|x64
+		{4D3021F4-00E7-48CE-97EF-685911CDDDC2}.Debug|x64.Build.0 = Debug|x64
+		{4D3021F4-00E7-48CE-97EF-685911CDDDC2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4D3021F4-00E7-48CE-97EF-685911CDDDC2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4D3021F4-00E7-48CE-97EF-685911CDDDC2}.Release|x64.ActiveCfg = Release|x64
+		{4D3021F4-00E7-48CE-97EF-685911CDDDC2}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {ADD75F68-2CCA-4D36-9497-8A4860ACF5BC}
 	EndGlobalSection
 EndGlobal

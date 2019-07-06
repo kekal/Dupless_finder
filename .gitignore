@@ -3,6 +3,10 @@
 *.png
 *.jpg
 *.suo
-Dupless_finder/obj/*
-Dupless_finder/bin/*
-Dupless_finder/Dupless_finder.csproj.DotSettings
+*.csproj.DotSettings
+/.vs/*
+/packages
+*.DotSettings.user
+*.csproj.user
+**/bin/**
+**/obj/**

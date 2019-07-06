@@ -1,288 +1,317 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Drawing.Imaging;
+using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
+using System.Threading.Tasks;
+using OpenCvSharp;
+using OpenCvSharp.Extensions;
+using OpenCvSharp.XFeatures2D;
+using static System.Math;
+using Size = OpenCvSharp.Size;
 
 
 namespace Dupless_finder
 {
     class Program
     {
+        private static int KEYPOINTS_NUMBER = 1000;
+        private static int THUMB_SIZE = 200;
+
         static void Main(string[] args)
         {
-            var size = 16;
+            DateTime time1, time2;
+            time1 = DateTime.Now;
+            var size = THUMB_SIZE;
+            var images = DirSearch(args[0], ".png", ".jpg");
 
 
-            double qwer;
-            var bmp1 = new Bitmap("7.jpg");
-            var bmp2 = new Bitmap("8.jpg");
-            var bmp1c = SquareCrop(bmp1);
-            var bmp2c = SquareCrop(bmp2);
-            var bmp1d = DownScale(bmp1c, size);
-            var bmp2d = DownScale(bmp2c, size);
-            var bmp1g = ConvertToGray(bmp1d);
-            var bmp2g = ConvertToGray(bmp2d);
-            var bmp1a = AutoContrast(bmp1g);
-            var bmp2a = AutoContrast(bmp2g);
-            var bmp1p = Threashold(bmp1a);
-            var bmp2p = Threashold(bmp2a);
-
-
-
-//            bmp1g.Save("7t.png");
-//            bmp2g.Save("8t.png");
-            bmp1p.Save("7a.png");
-            bmp2p.Save("8a.png");
-
-            qwer = Compare2(bmp1p, bmp2p, true);
-            bmp1p.Save("7diff.png");
-
-
-
-            Console.WriteLine(qwer * 100 + "%");
-        }
-
-        private static Bitmap SquareCrop(Bitmap bmp)
-        {
-            int lowerSize = Math.Min(bmp.Width, bmp.Height);
-
-            Rectangle cropRect = new Rectangle(0, 0, lowerSize, lowerSize);
-            Bitmap output = new Bitmap(cropRect.Width, cropRect.Height, bmp.PixelFormat);
-
-            using (var g = Graphics.FromImage(output))
+            if (args.Any(o => o.Equals("hard")))
             {
-                g.DrawImage(bmp, new Rectangle(0, 0, output.Width, output.Height), cropRect, GraphicsUnit.Pixel);
-            }
-            return output;
-        }
+                var hashes = CreateHashes(images, size);
 
-        private static Bitmap DownScale(Bitmap input, int edge)
-        {
-            using (var brush = new SolidBrush(Color.White))
-            {
-                float scale = (float) edge / Math.Max(input.Width, input.Height);
+                var sourceCollection = CreateMatchCollection(hashes);
 
-                int scaleWidth = (int) (input.Width * scale);
-                int scaleHeight = (int) (input.Height * scale);
+                File.WriteAllLines("log.txt", sourceCollection.Reverse().Select(r => r.ToString()));
 
-                var output = new Bitmap(scaleWidth, scaleHeight,input.PixelFormat);
-                using (var graph = Graphics.FromImage(output))
+                foreach (var result in sourceCollection.Reverse())
                 {
-                    graph.FillRectangle(brush, new RectangleF(0, 0, scaleWidth, scaleHeight));
-                    graph.DrawImage(input, 0, 0, scaleWidth, scaleHeight);
-                    return output;
+                    Console.WriteLine(result);
+                }
+                
+            }
+            else
+            {
+                IEnumerable<IDictionary<string, Bitmap[]>> sourceCollection2 = CreateSourceCollection2(images, size);
+
+                IEnumerable<KeyValuePair<string, Bitmap>> flatDict = CreateFlatBitmapCollection(sourceCollection2);
+
+
+                foreach (var result in GetMatches(flatDict).OrderBy(kv => kv.Match))
+                {
+                    Console.Write(result.Match * 100 + " %\t");
+                    Console.Write(result.Name1 + "\t");
+                    Console.WriteLine(result.Name2);
                 }
             }
+            time2 = DateTime.Now;
+
+
         }
 
-        private static Bitmap ConvertToGray(Bitmap inputBitmap)
+
+        public static IDictionary<string, MatOfFloat> CreateHashes(IEnumerable<string> pathes, int thumbSize)
         {
-            Bitmap newBitmap = new Bitmap(inputBitmap.Width, inputBitmap.Height);
-
-
-            ColorMatrix colorMatrix = new ColorMatrix(
-                new float[][]
+            var hashesDict = new ConcurrentDictionary<string, MatOfFloat>();
+            var tasks = new List<Task>();
+            foreach (var path in pathes)
+            {
+                var task = new Task(() =>
                 {
-                    new float[] {.3f, .3f, .3f, 0, 0},
-                    new float[] {.59f, .59f, .59f, 0, 0},
-                    new float[] {.11f, .11f, .11f, 0, 0},
-                    new float[] {0, 0, 0, 1, 0},
-                    new float[] {0, 0, 0, 0, 1}
-                });
+                    var sourceMat = new Mat(path);
 
-            ImageAttributes attributes = new ImageAttributes();
-            attributes.SetColorMatrix(colorMatrix);
-            using (Graphics g = Graphics.FromImage(newBitmap))
-            {
-                g.DrawImage(inputBitmap, new Rectangle(0, 0, inputBitmap.Width, inputBitmap.Height), 0, 0, inputBitmap.Width, inputBitmap.Height, GraphicsUnit.Pixel, attributes);
-            }
+                    var scale = (double) thumbSize / Max(sourceMat.Width, sourceMat.Height);
+                    sourceMat = sourceMat.Resize(new Size(0, 0), scale, scale, InterpolationFlags.Nearest);
+                    var gray = new Mat();
 
-            return newBitmap;
-        }
 
-        private static Bitmap AutoContrast(Bitmap inputBitmap)
-        {
-            BitmapInfo inputInfo = new BitmapInfo(inputBitmap);
+                    Cv2.CvtColor(sourceMat, gray, ColorConversionCodes.BGR2GRAY);
 
-            var preset = 0;
-            var max = inputInfo.RgbValues.Max();// - (inputInfo.RgbValues.Max() + preset <= byte.MaxValue ? -preset : 0);
+                    var sift = SIFT.Create();
 
-            var min = inputInfo.RgbValues.Min() + (inputInfo.RgbValues.Min() - preset >= 0             ?  preset : 0);
-
-            int range = max - min + 1;
-
-            for (var i = 0; i < inputInfo.RgbValues.Length; i++)
-            {
-                inputInfo.RgbValues[i] = (byte)(((double)inputInfo.RgbValues[i] - min) / range * byte.MaxValue);
-            }
-
-            inputInfo.Dispose();
-            return inputInfo.PopulateToBitmap();
-        }
-
-        private static Bitmap Threashold(Bitmap inputBitmap, byte threashold)
-        {
-            BitmapInfo qwer = new BitmapInfo(inputBitmap);
-            for (int i = 0; i < qwer.RgbValues.Length; i++)
-            {
-                qwer.RgbValues[i] = qwer.RgbValues[i] > threashold ? byte.MaxValue : byte.MinValue;
-            }
-
-            qwer.Dispose();
-            return qwer.PopulateToBitmap();
-        }
-
-        private static Bitmap Threashold(Bitmap inputBitmap)
-        {
-            BitmapInfo qwer = new BitmapInfo(inputBitmap);
-
-            byte[] temp = new byte[qwer.RgbValues.Length];
-
-            Array.Copy(qwer.RgbValues, temp, qwer.RgbValues.Length);
-            Array.Sort(temp);
-            var threashold = temp[qwer.RgbValues.Length / 2];
-
-            qwer.Dispose();
-            return Threashold(inputBitmap, threashold);
-        }
- 
-
-        private static double Compare2(Bitmap bmp1, Bitmap bmp2, bool showdiff = false)
-        {
-            if (ReferenceEquals(bmp1,bmp2))
-            {
-                return 1;
-            }
-
-            Rectangle rect = new Rectangle(0, 0, bmp1.Width, bmp1.Height);
-            BitmapData bmpData1 = bmp1.LockBits(rect, ImageLockMode.ReadOnly, bmp1.PixelFormat);
-            BitmapData bmpData2 = bmp2.LockBits(rect, ImageLockMode.ReadOnly, bmp2.PixelFormat);
-
-            var ptr1 = bmpData1.Scan0;
-            var ptr2 = bmpData2.Scan0;
-
-            int subPixelCount = bmpData1.Stride / bmp1.Width;
-            int bitmapSize = Math.Abs(bmpData1.Stride) * bmpData1.Height;
-
-            byte[] rgbValues1 = new byte[bitmapSize];
-            byte[] rgbValues2 = new byte[bitmapSize];
-
-            Marshal.Copy(ptr1, rgbValues1, 0, bitmapSize);
-            Marshal.Copy(ptr2, rgbValues2, 0, bitmapSize);
-
-            ulong equalCount = 0;
-            for (var i = 0; i < bitmapSize; i++)
-            {
-                if (rgbValues1[i] == rgbValues2[i])
-                {
-                    equalCount++;
-                    if (showdiff) {rgbValues1[i] = byte.MaxValue;}
+                    var descriptors = new MatOfFloat();
                     
-                }
-                else if (showdiff)
-                {
-                    rgbValues1[i] = 0;
-                    rgbValues1[i + 1] = 0;
-                    rgbValues1[i + 2] = 0;
-                    i += 2;
-                }
+                    Console.WriteLine("Creating hash for " + path);
+                    //var keypoints = sift.Detect(gray).Take(KEYPOINTS_NUMBER).ToArray();
+                    //sift.Compute(gray, ref keypoints, descriptors);
+                    sift.DetectAndCompute(gray, null, out KeyPoint[] keypoints, descriptors);
+                    hashesDict.TryAdd(path, descriptors);
+                });
+                tasks.Add(task);
+
+                task.Start();
             }
-
-            Marshal.Copy(rgbValues1, 0, ptr1, bitmapSize);
-
-            bmp1.UnlockBits(bmpData1);
-            bmp2.UnlockBits(bmpData2);
-
-            return (double)equalCount / bitmapSize;
+            Task.WaitAll(tasks.ToArray());
+            return hashesDict;
         }
 
-        private static double Compare(Bitmap bmp1, Bitmap bmp2)
+
+        private static IEnumerable<IDictionary<string, Bitmap[]>> CreateSourceCollection(string[] qwer1)
         {
-            ulong equalCount = 0;
-            ulong totalCount = 0;
-            Rectangle rect = new Rectangle(0, 0, bmp1.Width, bmp1.Height);
-            BitmapData bmpData1 = bmp1.LockBits(rect, ImageLockMode.ReadOnly, bmp1.PixelFormat);
-            BitmapData bmpData2 = bmp2.LockBits(rect, ImageLockMode.ReadOnly, bmp2.PixelFormat);
+            var size = THUMB_SIZE;
 
-            unsafe
+            Console.WriteLine("bmps");
+            var bmps = qwer1.Select(o => new Bitmap(o)).ToList();
+            Console.WriteLine("crops");
+            var crops = bmps.Select(ImageProcessing.SquareCrop).ToList();
+            Console.WriteLine("resizes");
+            var resizes = crops.Select(o => ImageProcessing.DownScale(o, size)).ToList();
+            Console.WriteLine("grayScale");
+            var grayScale = resizes.Select(ImageProcessing.ConvertToGray).ToList();
+            Console.WriteLine("contrasts");
+            var contrasts = grayScale.Select(ImageProcessing.AutoContrast).ToList();
+            Console.WriteLine("blackandwhite");
+            var blackandwhite = contrasts.Select(ImageProcessing.Threashold).ToList();
+            Console.WriteLine("transformations");
+            var transformations = blackandwhite.Select(ImageProcessing.CreateAllTransformations).ToList();
+
+
+            var sourceCollection = new List<IDictionary<string, Bitmap[]>>();
+
+            for (var i = 0; i < qwer1.Length; i++)
             {
-                byte* ptr1 = (byte*) bmpData1.Scan0.ToPointer();
-                byte* ptr2 = (byte*) bmpData2.Scan0.ToPointer();
-                int width = rect.Width * 3; // for 24bpp pixel data
+                sourceCollection.Add(new Dictionary<string, Bitmap[]> { { qwer1[i], transformations.ElementAt(i) } });
+            }
 
-                for (int y = 0; y < rect.Height; y++)
+            return sourceCollection;
+        }
+
+        private static IEnumerable<IDictionary<string, Bitmap[]>> CreateSourceCollection2(string[] qwer1, int size = 200)
+        {
+
+            Console.WriteLine("bmps");
+            var bmps = qwer1.Select(o => new Bitmap(o)).ToList();
+            Console.WriteLine("crops");
+            var grayThumbs = bmps.Select(bitmap => ImageProcessing.GrayScaleThumbnail(bitmap, size)).ToList();
+            Console.WriteLine("blackandwhite");
+            var blackandwhite = grayThumbs.Select(ImageProcessing.Threashold).ToList();
+            Console.WriteLine("transformations");
+            var transformations = blackandwhite.Select(ImageProcessing.CreateAllTransformations).ToList();
+
+
+            var sourceCollection = new List<IDictionary<string, Bitmap[]>>();
+
+            for (var i = 0; i < qwer1.Length; i++)
+            {
+                sourceCollection.Add(new Dictionary<string, Bitmap[]> { { qwer1[i], transformations.ElementAt(i) } });
+            }
+
+            return sourceCollection;
+        }
+
+        private static IEnumerable<Result> CreateMatchCollection(IDictionary<string, MatOfFloat> hashes)
+        {
+            var matchList = new ConcurrentBag<Result>();
+
+            var tasks = new List<Task>();
+
+            var hashArray = hashes.ToArray();
+            for (var j = 0; j < hashArray.Length; j++)
+            {
+                for (var i = j + 1; i < hashArray.Length; i++)
                 {
-                    for (int x = 0; x < width; x++)
+                    if (hashArray[j].Key == hashArray[i].Key)
                     {
-                        totalCount++;
-                        if (*ptr1 == *ptr2)
+                        continue;
+                    }
+
+                    var i1 = i;
+                    var j1 = j;
+                    var task = new Task(() =>
+                    {
+                        //Console.WriteLine("Calculate matchpoint for " + hashArray[i1].Key);
+                        if (i1 % (hashArray.Length / 10 + 1) == 0)
                         {
-                            equalCount++;
+                            Console.WriteLine("Calculate matchpoint for " + i1 + " and " + j1 + " of " + hashArray.Length);
                         }
-                        ptr1++;
-                        ptr2++;
-                    }
-                    ptr1 += bmpData1.Stride - width;
-                    ptr2 += bmpData2.Stride - width;
+                        var linearFactors = CalcLinearFactors(hashArray, j1, i1);
+                        matchList.Add(new Result(hashArray[j1].Key, hashArray[i1].Key, linearFactors.Item1));
+                    });
+
+                    tasks.Add(task);
+
+                    task.Start();
                 }
             }
-            bmp1.UnlockBits(bmpData1);
-            bmp2.UnlockBits(bmpData2);
-            return (double)equalCount / totalCount;
+
+            Task.WaitAll(tasks.ToArray());
+            return matchList.OrderBy(o => Abs(o.Match));
+        }
+
+        private static Tuple<double, double> CalcLinearFactors(KeyValuePair<string, MatOfFloat>[] hashArray, int j, int i)
+        {
+            //Console.WriteLine("Calculate matchpoint for " + hashArray[j].Key + " and " + hashArray[i].Key);
+
+            var bfMatches = new BFMatcher(NormTypes.L2, crossCheck: true).Match(hashArray[j].Value, hashArray[i].Value).OrderBy(o => o.Distance).Select(o => o.Distance);
+            var matches = bfMatches.Take(bfMatches.Count() / 2).ToArray();
+
+            var xes = new List<double>();
+            var yes = new List<double>();
+
+            for (int k = 0; k < matches.Length; k++)
+            {
+                xes.Add(k);
+                yes.Add(matches[k]);
+            }
+            var linearFactors = MathNet.Numerics.Fit.Line(xes.ToArray(), yes.ToArray());
+            //Console.WriteLine("\t\t x * " + linearFactors.Item2 + " + " + linearFactors.Item1);
+            return linearFactors;
+        }
+
+        private static IEnumerable<KeyValuePair<string, Bitmap>> CreateFlatBitmapCollection(IEnumerable<IDictionary<string, Bitmap[]>> list)
+        {
+            var flatDict = new List<KeyValuePair<string, Bitmap>>();
+            foreach (var dict in list)
+            {
+                foreach (var kv in dict)
+                {
+                    foreach (var bitmap in kv.Value)
+                    {
+                        flatDict.Add(new KeyValuePair<string, Bitmap>(kv.Key, bitmap));
+                    }
+                }
+            }
+            return flatDict;
+        }
+
+        private static IEnumerable<Result> GetMatches(IEnumerable<KeyValuePair<string, Bitmap>> flatDict)
+        {
+            var results = new List<Result>();
+            var pairs = flatDict as IList<KeyValuePair<string, Bitmap>> ?? flatDict.ToList();
+            for (var i = 0; i < pairs.Count; i++)
+            {
+                Console.WriteLine("Comparing" + pairs[i].Key);
+                for (var j = i + 1; j < pairs.Count; j++)
+                {
+                    if (pairs[i].Key == pairs[j].Key)
+                    {
+                        continue;
+                    }
+                    var match = ImageProcessing.Compare(pairs[i].Value, pairs[j].Value);
+                    var result = new Result(pairs[i].Key, pairs[j].Key, match);
+
+                    if (!results.Contains(result))
+                    {
+                        results.Add(result);
+                    }
+                    else
+                    {
+                        var storedItem = results.Find(r => r.Equals(result));
+                        if (storedItem.Match < match)
+                        {
+                            storedItem.Match = match;
+                        }
+                    }
+                }
+            }
+            return results;
         }
 
 
-        class BitmapInfo : IDisposable
+        public class Result : IEquatable<Result>
         {
-            public Rectangle BoundaryRect;
-            public BitmapData BmpData;
-            public Bitmap Bitmap;
-            public IntPtr Ptr;
-            public int SubPixelCount;
-            public int BitmapSize;
-            public byte[] RgbValues;
+            public string Name1;
+            public string Name2;
+            public double Match;
 
-            public BitmapInfo(Bitmap bitmap, ImageLockMode lockMode = ImageLockMode.ReadOnly)
+            public Result(string name1, string name2, double match)
             {
-                Bitmap = bitmap;
-                BoundaryRect = new Rectangle(0, 0, bitmap.Width, bitmap.Height);
-                BmpData = bitmap.LockBits(BoundaryRect, lockMode, bitmap.PixelFormat);
-                Ptr = BmpData.Scan0;
-                BitmapSize = Math.Abs(BmpData.Stride) * bitmap.Height;
-                RgbValues = new byte[BitmapSize];
-                Marshal.Copy(Ptr, RgbValues, 0, BitmapSize);
-                SubPixelCount = BmpData.Stride / bitmap.Width;
+                Name1 = name1;
+                Name2 = name2;
+                Match = match;
             }
 
-            public Bitmap PopulateToBitmap()
-            {
 
-                Bitmap outputBitmap = new Bitmap(BoundaryRect.Width, BoundaryRect.Height, Bitmap.PixelFormat);
-                var outputInfo = new BitmapInfo(outputBitmap);
-                Marshal.Copy(RgbValues, 0, outputInfo.Ptr, BitmapSize);
-                outputInfo.Dispose();
-                return outputInfo.Bitmap;
+            public bool Equals(Result other)
+            {
+                if (other == null) return false;
+
+                var otherName1 = other.Name1;
+                var otherName2 = other.Name2;
+                var equal = (Name1 == otherName1 && Name2 == otherName2) || (Name1 == otherName2 && Name2 == otherName1);
+                return equal;
             }
 
-            public void Dispose()
+            public override string ToString()
             {
-                if (Bitmap != null && BmpData != null)
+                return "\n====================\n" + Name1 + "\n" + Name2 + "\nhas best homogenized feature offset\n" + Match + "\n====================\n";
+            }
+        }
+
+        static string[] DirSearch(string sDir, params string[] types)
+        {
+            var list = new List<string>();
+            try
+            {
+                foreach (string f in Directory.GetFiles(sDir))
                 {
-                    try
+                    var type = Path.GetExtension(f);
+                    if (types.Any(o => o.Equals(type)))
                     {
-                        Bitmap.UnlockBits(BmpData);
+                        list.Add(f);
                     }
-                    catch (Exception){}
+                }
+                foreach (string d in Directory.GetDirectories(sDir))
+                {
+                    list.AddRange(DirSearch(d, types));
                 }
             }
-
-            ~BitmapInfo()
+            catch (Exception excpt)
             {
-                Dispose();
+                Console.WriteLine(excpt.Message);
             }
+            return list.ToArray();
         }
     }
 }
