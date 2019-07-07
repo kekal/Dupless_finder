@@ -1,31 +1,26 @@
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows;
 using System.IO;
 using System.Linq;
-using System.Net.Http;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Windows.Forms;
 using System.Windows.Media.Imaging;
 using System.Threading.Tasks;
 using System.Windows.Controls;
-using System.Windows.Media;
-using MessageBox = System.Windows.MessageBox;
 
 namespace Dupples_finder_UI
 {
     public class MainViewModel : DependencyObject
     {
-        private static MainViewModel inst;
+        private static MainViewModel _inst;
 
         public MainViewModel()
         {
             IsLoaded = true;
             PrepareCommands();
-            inst = this;
+            _inst = this;
         }
 
         //public static readonly DependencyProperty FilesProperty = DependencyProperty.Register("Files", typeof(string[]), typeof(MainViewModel), new PropertyMetadata(default(string[])));
@@ -64,22 +59,27 @@ namespace Dupples_finder_UI
         // ==================================================================================================================
         public RelayCommand LoadCommad { get; private set; }
 
-
         private void PrepareCommands()
         {
             LoadCommad = new RelayCommand(LoadRoutine);
+
         }
+
+        // ==================================================================================================================
+        #endregion
 
         private void LoadRoutine()
         {
-            using (var fbd = new FolderBrowserDialog())
+            using (var fbd = new FolderBrowserDialogEx())
             {
+                fbd.ShowNewFolderButton = false;
                 DialogResult result = fbd.ShowDialog();
 
                 if (result != DialogResult.OK || string.IsNullOrWhiteSpace(fbd.SelectedPath))
                 {
                     return;
                 }
+
                 DataCollection = DirSearch(fbd.SelectedPath, ".jpg", ".png").Select(path => new ImageInfo {FilePath = path}).ToList();
                 LoadCollectionToMemory(DataCollection);
             }
@@ -90,7 +90,7 @@ namespace Dupples_finder_UI
             Task.Factory.StartNew(() =>
             {
                 Thread.Sleep(100);
-                inst.Dispatcher.Invoke(() => IsLoaded = false);
+                _inst.Dispatcher.Invoke(() => IsLoaded = false);
 
                 foreach (var info in collection)
                 {
@@ -98,12 +98,10 @@ namespace Dupples_finder_UI
                 }
             }).ContinueWith(e =>
             {
-                inst.Dispatcher.Invoke(() => IsLoaded = true);
+                _inst.Dispatcher.Invoke(() => IsLoaded = true);
             });
         }
 
-        // ==================================================================================================================
-        #endregion
 
 
         static IEnumerable<string> DirSearch(string sDir, params string[] types)
@@ -132,12 +130,19 @@ namespace Dupples_finder_UI
 
         public static ImageInfo GetImageInfo(Image image)
         {
-            return inst.DataCollection.FirstOrDefault(x => x.FilePath == (string) image.Tag);
+            return _inst.DataCollection.FirstOrDefault(x => x.FilePath == (string) image.Tag);
         }
     }
 
     public class ImageInfo
     {
+        public ImageInfo()
+        {
+            PrepareCommands();
+        }
+
+        public RelayCommand ImageClick { get; private set; }
+
         private BitmapImage _image;
         public BitmapImage Image
         {
@@ -182,6 +187,16 @@ namespace Dupples_finder_UI
             {
                 _filePath = value;
             }
+        }
+
+        private void PrepareCommands()
+        {
+            ImageClick = new RelayCommand(OpenImageRoutine);
+        }
+
+        private void OpenImageRoutine()
+        {
+            Process.Start(FilePath);
         }
     }
 }

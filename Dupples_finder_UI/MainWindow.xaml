@@ -69,7 +69,12 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <Image Source="{Binding Image}" Tag="{Binding FilePath}" MouseUp="Image_MouseUp"  />
+                                <Button >
+                                    <Button.InputBindings>
+                                        <MouseBinding Command="{Binding ImageClick}" Gesture="LeftDoubleClick" />
+                                    </Button.InputBindings>
+                                    <Image Source="{Binding Image}" Tag="{Binding FilePath}"/>
+                                </Button>
                                 <Image Source="{Binding Image}" Grid.Column="2"   />
                             </Grid>
                         </DataTemplate>

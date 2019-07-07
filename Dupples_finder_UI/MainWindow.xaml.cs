@@ -25,11 +25,5 @@ namespace Dupples_finder_UI
         {
             InitializeComponent();
         }
-
-        private void Image_MouseUp(object sender, MouseButtonEventArgs e)
-        {
-            var info = MainViewModel.GetImageInfo((Image)sender);
-            Process.Start(info.FilePath);
-        }
     }
 }

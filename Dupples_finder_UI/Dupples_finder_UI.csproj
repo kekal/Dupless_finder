@@ -55,6 +55,9 @@
     <Prefer32Bit>true</Prefer32Bit>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="FolderBrowserDialogEx, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\FolderBrowserDialogEx.1.0.0\lib\net20\FolderBrowserDialogEx.dll</HintPath>
+    </Reference>
     <Reference Include="MaterialIcons, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <HintPath>..\packages\MaterialIcons.1.0.3\lib\MaterialIcons.dll</HintPath>
     </Reference>
