@@ -11,6 +11,7 @@ using System.Threading;
 using System.Windows.Forms;
 using System.Windows.Media.Imaging;
 using System.Threading.Tasks;
+using System.Windows.Controls;
 using System.Windows.Media;
 using MessageBox = System.Windows.MessageBox;
 
@@ -61,55 +62,35 @@ namespace Dupples_finder_UI
 
         #region Commands
         // ==================================================================================================================
-        public RelayCommand SaveCommand { get; private set; }
+        public RelayCommand LoadCommad { get; private set; }
 
 
         private void PrepareCommands()
         {
-            SaveCommand = new RelayCommand(() =>
-            {
-                using (var fbd = new FolderBrowserDialog())
-                {
-                    DialogResult result = fbd.ShowDialog();
-
-                    if (result != DialogResult.OK || string.IsNullOrWhiteSpace(fbd.SelectedPath))
-                    {
-                        return;
-                    }
-
-                    DataCollection = DirSearch(fbd.SelectedPath, ".jpg", ".png").Select(path => new ImageInfo {FilePath = path}).ToList();
-
-
-                    LoadCollectionToMemory(DataCollection);
-
-                }
-            });
+            LoadCommad = new RelayCommand(LoadRoutine);
         }
 
-        //void SetLoading()
-        //{
-        //    if (Table1)
-        //    {
-                
-        //    }
-        //}
+        private void LoadRoutine()
+        {
+            using (var fbd = new FolderBrowserDialog())
+            {
+                DialogResult result = fbd.ShowDialog();
 
-        //void SetLoaded()
-        //{
-        //    throw new NotImplementedException();
-        //}
+                if (result != DialogResult.OK || string.IsNullOrWhiteSpace(fbd.SelectedPath))
+                {
+                    return;
+                }
+                DataCollection = DirSearch(fbd.SelectedPath, ".jpg", ".png").Select(path => new ImageInfo {FilePath = path}).ToList();
+                LoadCollectionToMemory(DataCollection);
+            }
+        }
 
         private void LoadCollectionToMemory(IList<ImageInfo> collection)
         {
-            var qwer = System.Windows.Threading.Dispatcher.CurrentDispatcher;
-            var ins = inst;
             Task.Factory.StartNew(() =>
             {
-                Thread.Sleep(3000);
-                ins.Dispatcher.Invoke(() =>
-                {
-                    IsLoaded = false;
-                });
+                Thread.Sleep(100);
+                inst.Dispatcher.Invoke(() => IsLoaded = false);
 
                 foreach (var info in collection)
                 {
@@ -117,21 +98,8 @@ namespace Dupples_finder_UI
                 }
             }).ContinueWith(e =>
             {
-                ins.Dispatcher.Invoke(() =>
-                {
-                    IsLoaded = true;
-                });
+                inst.Dispatcher.Invoke(() => IsLoaded = true);
             });
-
-            //Task.Run(() =>
-            //    {
-            //        Thread.Sleep(100);
-            //        foreach (var info in collection)
-            //        {
-            //            var a = info.Image;
-            //        }
-            //    }
-            //);
         }
 
         // ==================================================================================================================
@@ -145,8 +113,7 @@ namespace Dupples_finder_UI
             {
                 foreach (string f in Directory.GetFiles(sDir))
                 {
-                    var type = Path.GetExtension(f);
-                    if (types.Any(o => o.Equals(type)))
+                    if (types.Any(o => o.Equals(Path.GetExtension(f))))
                     {
                         list.Add(f);
                     }
@@ -163,62 +130,22 @@ namespace Dupples_finder_UI
             return list;
         }
 
+        public static ImageInfo GetImageInfo(Image image)
+        {
+            return inst.DataCollection.FirstOrDefault(x => x.FilePath == (string) image.Tag);
+        }
     }
 
-    public class ImageInfo /*: DependencyObject*/
+    public class ImageInfo
     {
-        private static object mutex = new object();
-
-        //public static BitmapImage CreateThumbnail(string imagePath)
-        //{
-        //    BitmapImage bitmap = new BitmapImage();
-
-        //    lock (mutex)
-        //    {
-        //        using (var stream = new FileStream(imagePath, FileMode.Open, FileAccess.Read))
-        //        {
-        //            bitmap.BeginInit();
-        //            bitmap.DecodePixelWidth = 283;
-        //            bitmap.DecodePixelHeight = 283;
-        //            bitmap.CacheOption = BitmapCacheOption.None;
-        //            bitmap.StreamSource = stream;
-        //            bitmap.EndInit();
-        //        }
-
-        //        bitmap.Freeze();
-        //    }
-
-
-        //    //GC.WaitForPendingFinalizers();
-        //    //GC.Collect();
-
-        //    return bitmap;
-        //}
-
         private BitmapImage _image;
-
-        //public async Task<BitmapImage> UpdateImage()
-        //{
-        //     return await Task.Run(() => CreateThumbnail(FilePath));
-        //}
-
-        //public static readonly DependencyProperty ImageProperty = DependencyProperty.Register("Image", typeof(BitmapImage), typeof(ImageInfo), new PropertyMetadata(default(BitmapImage)));
         public BitmapImage Image
         {
-            //get
-            //{
-            //    var image = UpdateImage().Result;
-            //    return  image;
-            //}
             get
             {
                 if (_image == null)
                 {
-
-
                     var DecodeSize = 200;
-                    //var UriSource = new Uri(FilePath);
-
                     // Only load thumbnails
                     byte[] buffer = File.ReadAllBytes(FilePath);
                     var mem = new MemoryStream(buffer);
@@ -240,7 +167,7 @@ namespace Dupples_finder_UI
             }
             set
             {
-                if (_image != value)
+                if (!ReferenceEquals(_image, value))
                 {
                     _image = value;
                 }
@@ -254,7 +181,6 @@ namespace Dupples_finder_UI
             set
             {
                 _filePath = value;
-                //UpdateImage();
             }
         }
     }

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -23,6 +24,12 @@ namespace Dupples_finder_UI
         public MainWindow()
         {
             InitializeComponent();
+        }
+
+        private void Image_MouseUp(object sender, MouseButtonEventArgs e)
+        {
+            var info = MainViewModel.GetImageInfo((Image)sender);
+            Process.Start(info.FilePath);
         }
     }
 }
