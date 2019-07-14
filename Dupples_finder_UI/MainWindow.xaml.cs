@@ -21,9 +21,16 @@ namespace Dupples_finder_UI
     /// </summary>
     public partial class MainWindow : Window
     {
+        private static MainWindow _inst;
         public MainWindow()
         {
             InitializeComponent();
+            _inst = this;
+        }
+
+        public static void Update()
+        {
+            _inst.Table1.UpdateLayout();
         }
     }
 }

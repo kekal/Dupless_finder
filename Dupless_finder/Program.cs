@@ -14,7 +14,7 @@ using Size = OpenCvSharp.Size;
 
 namespace Dupless_finder
 {
-    class Program
+    public class Program
     {
         private static int KEYPOINTS_NUMBER = 1000;
         private static int THUMB_SIZE = 200;
@@ -150,7 +150,7 @@ namespace Dupless_finder
             return sourceCollection;
         }
 
-        private static IEnumerable<Result> CreateMatchCollection(IDictionary<string, MatOfFloat> hashes)
+        public static IEnumerable<Result> CreateMatchCollection(IDictionary<string, MatOfFloat> hashes)
         {
             var matchList = new ConcurrentBag<Result>();
 
