@@ -26,6 +26,8 @@ namespace Dupples_finder_UI
             PrepareCommands();
             Inst = this;
             IsLoaded = true;
+            PairDataCollection = new List<ImagePair>();
+            DataCollection = new List<ImageInfo>();
             StartMemoryAmountPublishing();
         }
         
@@ -36,6 +38,7 @@ namespace Dupples_finder_UI
         //public static readonly DependencyProperty FilesProperty = DependencyProperty.Register("Files", typeof(string[]), typeof(MainViewModel), new PropertyMetadata(default(string[])));
         public static readonly DependencyProperty IsHardModeProperty = DependencyProperty.Register("IsHardMode", typeof(bool), typeof(MainViewModel), new PropertyMetadata(default(bool)));
         public static readonly DependencyProperty DataCollectionProperty = DependencyProperty.Register("DataCollection", typeof(IList<ImageInfo>), typeof(MainViewModel), new PropertyMetadata(new List<ImageInfo>()));
+        public static readonly DependencyProperty PairDataCollectionProperty = DependencyProperty.Register("PairDataCollection", typeof(IList<ImagePair>), typeof(MainViewModel), new PropertyMetadata(default(IList<ImagePair>)));
         public static readonly DependencyProperty ImageProperty = DependencyProperty.Register("Image", typeof(object), typeof(MainViewModel), new PropertyMetadata(default(BitmapImage)));
         public static readonly DependencyProperty IsLoadedProperty = DependencyProperty.Register("IsLoaded", typeof(bool), typeof(MainViewModel), new PropertyMetadata(default(bool)));
         public static readonly DependencyProperty CalcProgressProperty = DependencyProperty.Register("CalcProgress", typeof(double), typeof(MainViewModel), new PropertyMetadata(default(double)));
@@ -63,6 +66,7 @@ namespace Dupples_finder_UI
         private Timer _t;
 
         private ConcurrentDictionary<string, MatOfFloat> _hashesDict;
+        private IEnumerable<Program.Result> _matches;
         
         // ==================================================================================================================
         
@@ -77,7 +81,29 @@ namespace Dupples_finder_UI
         public IList<ImageInfo> DataCollection
         {
             get => (IList<ImageInfo>)GetValue(DataCollectionProperty);
-            set => SetValue(DataCollectionProperty, value);
+            set
+            {
+                if (DataCollection != null)
+                    foreach (var img in DataCollection)
+                    {
+                        img?.Dispose();
+                    }
+                SetValue(DataCollectionProperty, value);
+            }
+        }
+
+        public IList<ImagePair> PairDataCollection
+        {
+            get => (IList<ImagePair>)GetValue(PairDataCollectionProperty);
+            set
+            {
+                if (PairDataCollection != null)
+                    foreach (var img in PairDataCollection)
+                    {
+                        img?.Dispose();
+                    }
+                SetValue(PairDataCollectionProperty, value);
+            }
         }
 
         public bool IsHardMode
@@ -90,6 +116,12 @@ namespace Dupples_finder_UI
         {
             get { return (bool)GetValue(IsLoadedProperty); }
             set { SetValue(IsLoadedProperty, value); }
+        }
+
+        public Visibility IsProgrVisible
+        {
+            get { return (Visibility)GetValue(IsProgrVisibleProperty); }
+            set { SetValue(IsProgrVisibleProperty, value); }
         }
 
         public double CalcProgress
@@ -112,13 +144,9 @@ namespace Dupples_finder_UI
 
         public RelayCommand LoadCommad { get; private set; }
 
-        public RelayCommand ComputeCommand { get; private set; }
+        public RelayCommand CreateHashes { get; private set; }
+        public RelayCommand ComputeDupes { get; private set; }
 
-        public Visibility IsProgrVisible
-        {
-            get { return (Visibility) GetValue(IsProgrVisibleProperty); }
-            set { SetValue(IsProgrVisibleProperty, value); }
-        }
 
         private void PrepareCommands()
         {
@@ -134,24 +162,26 @@ namespace Dupples_finder_UI
                         return;
                     }
 
-                    DataCollection = DirSearch(fbd.SelectedPath, ".jpg", ".png").Select(path => new ImageInfo {FilePath = path}).ToList();
+                    IEnumerable<string> pathes = DirSearch(fbd.SelectedPath, ".jpg", ".png");
+                    DataCollection = pathes.Select(path => new ImageInfo {FilePath = path}).ToList();
                     LoadCollectionToMemory(DataCollection);
                 }
             });
 
-            ComputeCommand = new RelayCommand(() =>
+            CreateHashes = new RelayCommand(() =>
             {
                 IsProgrVisible = Visibility.Visible;
                 Thread.CurrentThread.Priority = ThreadPriority.Highest;
-                
                 var pathCollection = DataCollection.Select(ii => ii.FilePath);
-                var mainCalcThread = new Thread(() =>
-                {
-                    Thread.CurrentThread.Priority = ThreadPriority.Lowest;
-                    Calc(pathCollection);
-                });
 
-                mainCalcThread.Start();
+                CalcSiftHashes(pathCollection)
+                .ContinueWith(e1 => { _matches = CreateMatchCollection(_hashesDict); })
+                .ContinueWith(e2 => { PopulateDupes(); });
+            });
+
+            ComputeDupes = new RelayCommand(() =>
+            {
+                
             });
         }
 
@@ -169,9 +199,26 @@ namespace Dupples_finder_UI
             })), null, 0, 300);
         }
 
+        private void PopulateDupes()
+        {
+            Dispatcher.Invoke(() =>
+            {
+                var temp = _matches.Select(match => new ImagePair
+                {
+                    Image1 = DataCollection.FirstOrDefault(im => im.FilePath == match.Name1),
+                    Image2 = DataCollection.FirstOrDefault(im => im.FilePath == match.Name2),
+                    Match = match.Match
+                }).ToList();
+
+                //LoadCollectionDupesToMemory(temp);
+                PairDataCollection = temp;
+            });
+
+        }
+
         private void LoadCollectionToMemory(IList<ImageInfo> collection)
         {
-            Inst.Dispatcher.Invoke(() => IsLoaded = false);
+            Dispatcher.Invoke(() => IsLoaded = false);
 
             Task.Factory.StartNew(() =>
             {
@@ -181,8 +228,26 @@ namespace Dupples_finder_UI
                 }
             }).ContinueWith(e =>
             {
-                Inst.Dispatcher.Invoke(MainWindow.Update);
-                Inst.Dispatcher.Invoke(() => IsLoaded = true);
+                Dispatcher.Invoke(MainWindow.Update);
+                Dispatcher.Invoke(() => IsLoaded = true);
+            });
+        }
+
+        private void LoadCollectionDupesToMemory(IList<ImagePair> collection)
+        {
+            Dispatcher.Invoke(() => IsLoaded = false);
+
+            Task.Factory.StartNew(() =>
+            {
+                foreach (var pair in collection)
+                {
+                    var a = pair.Image1;
+                    var b = pair.Image2;
+                }
+            }).ContinueWith(e =>
+            {
+                //Dispatcher.Invoke(MainWindow.Update);
+                Dispatcher.Invoke(() => IsLoaded = true);
             });
         }
 
@@ -210,15 +275,21 @@ namespace Dupples_finder_UI
             return list;
         }
 
-        public static ImageInfo GetImageInfo(Image image)
+        public ImageInfo GetImageInfo(Image image)
         {
-            return Inst.DataCollection.FirstOrDefault(x => x.FilePath == (string)image.Tag);
+            return DataCollection.FirstOrDefault(x => x.FilePath == (string)image.Tag);
         }
+        
+        #region SIFT Calculations
 
-        public static IEnumerable<Program.Result> CreateMatchCollection(IDictionary<string, MatOfFloat> hashes)
+        public IEnumerable<Program.Result> CreateMatchCollection(IDictionary<string, MatOfFloat> hashes)
         {
+            Dispatcher.BeginInvoke(new Func<bool>(() => { IsProgrVisible = Visibility.Visible; return false; }));
+
             var matchList = new ConcurrentBag<Program.Result>();
 
+            var currentProgress = 0.0;
+            var minProgressStep = 100.0 / (hashes.Count /2 * (hashes.Count - 1));
             var tasks = new List<Task>();
             int completedIterations = 0;
             var hashArray = hashes.ToArray();
@@ -235,19 +306,31 @@ namespace Dupples_finder_UI
                     var j1 = j;
                     var task = new Task(() =>
                     {
-                        //Console.WriteLine("Calculate matchpoint for " + hashArray[i1].Key);
-                        if (i1 % (hashArray.Length / 10 + 1) == 0)
-                        {
-                            Console.WriteLine("Calculate matchpoint for " + i1 + " and " + j1 + " of " + hashArray.Length);
-                        }
+                        Thread.CurrentThread.Priority = ThreadPriority.Lowest;
+                        //if (i1 % (hashArray.Length / 10 + 1) == 0)
+                        //{
+                        //    Console.WriteLine(@"Calculate matchpoint for " + i1 + @" and " + j1 + @" of " + hashArray.Length);
+                        //}
                         var linearFactors = CalcLinearFactors(hashArray, j1, i1);
                         matchList.Add(new Program.Result(hashArray[j1].Key, hashArray[i1].Key, linearFactors.Item1));
+
+                        Interlocked.Exchange(ref currentProgress, currentProgress + minProgressStep);
+                        Dispatcher.BeginInvoke(new Func<bool>(() =>
+                        {
+                            CalcProgress = currentProgress;
+                            if (Abs(currentProgress - 100) < 0.1)
+                            {
+                                IsProgrVisible = Visibility.Collapsed;
+                            }
+                            return false;
+                        }));
                     });
 
                     tasks.Add(task);
-
-                    task.Start();
                 }
+            }
+            foreach (var t in tasks)       {
+                t.Start();
             }
 
             Task.WaitAll(tasks.ToArray());
@@ -256,8 +339,6 @@ namespace Dupples_finder_UI
 
         private static Tuple<double, double> CalcLinearFactors(KeyValuePair<string, MatOfFloat>[] hashArray, int j, int i)
         {
-            //Console.WriteLine("Calculate matchpoint for " + hashArray[j].Key + " and " + hashArray[i].Key);
-
             var bfMatches = new BFMatcher(NormTypes.L2, crossCheck: true).Match(hashArray[j].Value, hashArray[i].Value).OrderBy(o => o.Distance).Select(o => o.Distance);
             var matches = bfMatches.Take(bfMatches.Count() / 2).ToArray();
 
@@ -270,67 +351,63 @@ namespace Dupples_finder_UI
                 yes.Add(matches[k]);
             }
             var linearFactors = MathNet.Numerics.Fit.Line(xes.ToArray(), yes.ToArray());
-            //Console.WriteLine("\t\t x * " + linearFactors.Item2 + " + " + linearFactors.Item1);
             return linearFactors;
         }
 
-        void Calc(IEnumerable<string> pathes)
+        private Task CalcSiftHashes(IEnumerable<string> paths, int thumbSize = 100)
         {
-            //var pathes = DataCollection.Select(ii => ii.FilePath);
-            var thumbSize = 100;
-
             var currentProgress = 0.0;
-            double minProgressStep = 100.0 / pathes.Count();
-            var updateBarStep = 0;
+            var minProgressStep = 100.0 / paths.Count();
+
+            if (_hashesDict?.Values != null)
+            {
+                foreach (var mat in _hashesDict.Values)
+                {
+                    mat?.Dispose();
+                }
+            }
 
             _hashesDict = new ConcurrentDictionary<string, MatOfFloat>();
-            var tasks = new List<Task>();
 
-            foreach (var path in pathes)
+            var tasks = new List<Task>();
+            foreach (var path in paths)
             {
                 var task = new Task(() =>
                 {
                     Thread.CurrentThread.Priority = ThreadPriority.Lowest;
+                    var sourceMat = new Mat(path,ImreadModes.GrayScale).Resize(new OpenCvSharp.Size(thumbSize, thumbSize), 0, 0, InterpolationFlags.Nearest);
 
-                    var sourceMat = new Mat(path);
+                    //var scale = (double)thumbSize / Max(sourceMat.Width, sourceMat.Height);
+                    //var resizedMat = sourceMat.Resize(new OpenCvSharp.Size(0, 0), scale, scale, InterpolationFlags.Nearest);
 
-                    var scale = (double)thumbSize / Max(sourceMat.Width, sourceMat.Height);
-                    var resizedMat = sourceMat.Resize(new OpenCvSharp.Size(0, 0), scale, scale, InterpolationFlags.Nearest);
-
-                    var grayScaledMat = new Mat();
-                    Cv2.CvtColor(resizedMat, grayScaledMat, ColorConversionCodes.BGR2GRAY);
-
+                    //var grayScaledMat = new Mat();
+                    //Cv2.CvtColor(resizedMat, grayScaledMat, ColorConversionCodes.BGR2GRAY);
 
                     var siftPoints = SIFT.Create();
 
                     var descriptors = new MatOfFloat();
 
-                    //Console.WriteLine("Creating hash for " + path);
                     //var keypoints = sift.Detect(gray).Take(KEYPOINTS_NUMBER).ToArray();
                     //sift.Compute(gray, ref keypoints, descriptors);
-                    siftPoints.DetectAndCompute(grayScaledMat, null, out KeyPoint[] keypoints, descriptors);
+                    siftPoints.DetectAndCompute(sourceMat, null, out KeyPoint[] keypoints, descriptors);
 
                     _hashesDict.TryAdd(path, descriptors);
 
-                    resizedMat?.Dispose();
+                    //resizedMat?.Dispose();
                     siftPoints.Dispose();
-                    grayScaledMat.Dispose();
+                    //grayScaledMat.Dispose();
                     sourceMat.Dispose();
 
                     currentProgress += minProgressStep;
-                    updateBarStep++;
-                    if (updateBarStep % 10 == 0)
+                    Dispatcher.BeginInvoke(new Func<bool>(() =>
                     {
-                        updateBarStep = 0;
-                        Inst.Dispatcher.BeginInvoke(new Func<double>(() =>
+                        CalcProgress = currentProgress;
+                        if (Abs(currentProgress - 100) < 0.1)
                         {
-                            if (currentProgress >= 99.5)
-                            {
-                                IsProgrVisible = Visibility.Collapsed;
-                            }
-                            return CalcProgress = currentProgress;
-                        }));
-                    }
+                            IsProgrVisible = Visibility.Collapsed;
+                        }
+                        return false;
+                    }));
                 });
 
                 tasks.Add(task);
@@ -339,15 +416,15 @@ namespace Dupples_finder_UI
             {
                 task.Start();
             }
-            //Task.WaitAll(tasks.ToArray());
-        }
-
+            return Task.WhenAll(tasks.ToArray());
+        } 
+        #endregion
         #endregion
 
         // ==================================================================================================================
     }
 
-    public class ImageInfo
+    public class ImageInfo : IDisposable
     {
         public ImageInfo()
         {
@@ -412,6 +489,36 @@ namespace Dupples_finder_UI
         private void OpenImageRoutine()
         {
             Process.Start(FilePath);
+        }
+
+        public void Dispose()
+        {
+            Image = null;
+        }
+    }
+
+    public class ImagePair : IDisposable
+    {
+        public double Match;
+        private ImageInfo _image1;
+        private ImageInfo _image2;
+
+        public ImageInfo Image1
+        {
+            get { return _image1; }
+            set { _image1 = value; }
+        }
+
+        public ImageInfo Image2
+        {
+            get { return _image2; }
+            set { _image2 = value; }
+        }
+
+        public void Dispose()
+        {
+            _image1.Dispose();
+            _image2.Dispose();
         }
     }
 }

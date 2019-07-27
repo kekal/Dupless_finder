@@ -285,7 +285,7 @@ namespace Dupless_finder
 
             public override string ToString()
             {
-                return "\n====================\n" + Name1 + "\n" + Name2 + "\nhas best homogenized feature offset\n" + Match + "\n====================\n";
+                return "\n= \n" + Name1 + " \n " + Name2 + "\n has best homogenized feature offset \n" + Match + " \n==\n";
             }
         }
 
