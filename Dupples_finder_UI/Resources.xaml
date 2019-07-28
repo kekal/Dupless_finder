@@ -6,6 +6,7 @@
         <Setter Property="Background" Value="{x:Null}"/>
         <Setter Property="BorderBrush" Value="{x:Null}"/>
         <Setter Property="Foreground" Value="{x:Null}"/>
+        <Setter Property="MinWidth" Value="10"/>
     </Style>
     
     <Style TargetType="{x:Type Image}" >

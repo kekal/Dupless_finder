@@ -63,7 +63,6 @@ namespace Dupples_finder_UI
 
         #region Fields
 
-        private Timer _t;
 
         private ConcurrentDictionary<string, MatOfFloat> _hashesDict;
         private IEnumerable<Program.Result> _matches;
@@ -83,11 +82,11 @@ namespace Dupples_finder_UI
             get => (IList<ImageInfo>)GetValue(DataCollectionProperty);
             set
             {
-                if (DataCollection != null)
-                    foreach (var img in DataCollection)
-                    {
-                        img?.Dispose();
-                    }
+                //if (DataCollection != null)
+                //    foreach (var img in DataCollection)
+                //    {
+                //        img?.Dispose();
+                //    }
                 SetValue(DataCollectionProperty, value);
             }
         }
@@ -97,11 +96,11 @@ namespace Dupples_finder_UI
             get => (IList<ImagePair>)GetValue(PairDataCollectionProperty);
             set
             {
-                if (PairDataCollection != null)
-                    foreach (var img in PairDataCollection)
-                    {
-                        img?.Dispose();
-                    }
+                //if (PairDataCollection != null)
+                //    foreach (var img in PairDataCollection)
+                //    {
+                //        img?.Dispose();
+                //    }
                 SetValue(PairDataCollectionProperty, value);
             }
         }
@@ -145,27 +144,20 @@ namespace Dupples_finder_UI
         public RelayCommand LoadCommad { get; private set; }
 
         public RelayCommand CreateHashes { get; private set; }
-        public RelayCommand ComputeDupes { get; private set; }
+        public RelayCommand LoadTemplateCollection { get; private set; }
 
 
         private void PrepareCommands()
         {
             LoadCommad = new RelayCommand(() =>
             {
-                using (var fbd = new FolderBrowserDialogEx())
+                if (GetAllPathes(out var pathes) || pathes == null)
                 {
-                    fbd.ShowNewFolderButton = false;
-                    DialogResult result = fbd.ShowDialog();
-
-                    if (result != DialogResult.OK || string.IsNullOrWhiteSpace(fbd.SelectedPath))
-                    {
-                        return;
-                    }
-
-                    IEnumerable<string> pathes = DirSearch(fbd.SelectedPath, ".jpg", ".png");
-                    DataCollection = pathes.Select(path => new ImageInfo {FilePath = path}).ToList();
-                    LoadCollectionToMemory(DataCollection);
+                    return;
                 }
+
+                DataCollection = pathes.Select(path => new ImageInfo {FilePath = path}).ToList();
+                LoadCollectionToMemory(DataCollection);
             });
 
             CreateHashes = new RelayCommand(() =>
@@ -175,15 +167,35 @@ namespace Dupples_finder_UI
                 var pathCollection = DataCollection.Select(ii => ii.FilePath);
 
                 CalcSiftHashes(pathCollection)
-                .ContinueWith(e1 => { _matches = CreateMatchCollection(_hashesDict); })
-                .ContinueWith(e2 => { PopulateDupes(); });
+                    .ContinueWith(e1 => { _matches = CreateMatchCollection(_hashesDict); })
+                    .ContinueWith(e2 => { PopulateDupes(); });
             });
 
-            ComputeDupes = new RelayCommand(() =>
+            LoadTemplateCollection = new RelayCommand(() =>
             {
-                
+                IList<ImagePair> colle = new List<ImagePair>();
+                if (GetAllPathes(out var pathes) || pathes == null)
+                {
+                    return;
+                }
+
+                DataCollection = pathes.Select(path => new ImageInfo {FilePath = path}).ToList();
+
+                LoadCollectionToMemory(DataCollection);
+
+                for (var i = 1; i < DataCollection.Count; i += 2)
+                {
+                    colle.Add(new ImagePair
+                    {
+                        Image1 = DataCollection[i - 1],
+                        Image2 = DataCollection[i]
+                    });
+                }
+                PairDataCollection = colle;
+
             });
         }
+
 
         #endregion
 
@@ -191,6 +203,25 @@ namespace Dupples_finder_UI
 
         #region Methods
 
+        private static bool GetAllPathes(out IEnumerable<string> pathes)
+        {
+            using (var fbd = new FolderBrowserDialogEx())
+            {
+                fbd.ShowNewFolderButton = false;
+                DialogResult result = fbd.ShowDialog();
+
+                if (result != DialogResult.OK || string.IsNullOrWhiteSpace(fbd.SelectedPath))
+                {
+                    pathes = null;
+                    return true;
+                }
+
+                pathes = DirSearch(fbd.SelectedPath, ".jpg", ".png");
+            }
+            return false;
+        }
+
+        private Timer _t;
         private void StartMemoryAmountPublishing()
         {
             _t = new Timer(_ => Dispatcher.BeginInvoke(new Func<long>(() =>
@@ -213,7 +244,6 @@ namespace Dupples_finder_UI
                 //LoadCollectionDupesToMemory(temp);
                 PairDataCollection = temp;
             });
-
         }
 
         private void LoadCollectionToMemory(IList<ImageInfo> collection)
@@ -339,8 +369,10 @@ namespace Dupples_finder_UI
 
         private static Tuple<double, double> CalcLinearFactors(KeyValuePair<string, MatOfFloat>[] hashArray, int j, int i)
         {
-            var bfMatches = new BFMatcher(NormTypes.L2, crossCheck: true).Match(hashArray[j].Value, hashArray[i].Value).OrderBy(o => o.Distance).Select(o => o.Distance);
-            var matches = bfMatches.Take(bfMatches.Count() / 2).ToArray();
+            var bfMatches = new BFMatcher(NormTypes.L2, crossCheck: true).Match(hashArray[j].Value, hashArray[i].Value).OrderBy(o => o.Distance).Select(o => o.Distance).ToList();
+
+            var range = bfMatches.Count > 10 ? bfMatches.Count / 2 : bfMatches.Count;
+            var matches = bfMatches.Take(range).ToArray();
 
             var xes = new List<double>();
             var yes = new List<double>();
@@ -426,6 +458,7 @@ namespace Dupples_finder_UI
 
     public class ImageInfo : IDisposable
     {
+        private static readonly object Lock1 = new object();
         public ImageInfo()
         {
             PrepareCommands();
@@ -446,31 +479,39 @@ namespace Dupples_finder_UI
                 {
                     return _image;
                 }
-
-                var DecodeSize = 200;
-                // Only load thumbnails
-                _buffer = null;
-                _buffer = File.ReadAllBytes(FilePath);
-                var mem = new MemoryStream(_buffer);
-                var reducedImage = new BitmapImage();
-                reducedImage.BeginInit();
-                reducedImage.DecodePixelHeight = DecodeSize;
-                reducedImage.CacheOption = BitmapCacheOption.OnDemand;
-                reducedImage.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
-                //_reducedImage.DecodePixelWidth = DecodeSize;
-
-                reducedImage.Rotation = Rotation.Rotate0;
-                reducedImage.StreamSource = mem;
-                //reducedImage.StreamSource = new FileStream(FilePath,FileMode.Open);
-                reducedImage.EndInit();
-                //buffer = null;
-                reducedImage.Freeze();
-
-                //if (currentProc.PrivateMemorySize64 / 1048576 < 200)
-                //{
+                BitmapImage reducedImage;
+                lock (Lock1)
+                {
+                    if (_image != null)
+                    {
+                        return _image;
+                    }
+                    var DecodeSize = 200;
+                    // Only load thumbnails
+                    _buffer = null;
+                    //_buffer = File.ReadAllBytes(FilePath);
+                    //var mem = new MemoryStream(_buffer);
+                    reducedImage = new BitmapImage();
+                    reducedImage.BeginInit();
+                    reducedImage.DecodePixelHeight = DecodeSize;
+                    reducedImage.CacheOption = BitmapCacheOption.OnLoad;
+                    reducedImage.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
+                    //_reducedImage.DecodePixelWidth = DecodeSize;
+                    reducedImage.Rotation = Rotation.Rotate0;
+                    //reducedImage.StreamSource = mem;
+                    try
+                    {
+                        reducedImage.StreamSource = new FileStream(FilePath, FileMode.Open/*, FileAccess.Read, FileShare.Read*/);
+                    }
+                    catch (Exception e)
+                    {
+                        Trace.WriteLine(e.Message + e.InnerException?.Message);
+                    }
+                    reducedImage.EndInit();
+                    reducedImage.Freeze();
+                    //buffer = null;
                     _image = reducedImage;
-                //}
-
+                }
                 return reducedImage;
             }
             set

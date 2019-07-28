@@ -6,7 +6,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:materialIcons="clr-namespace:MaterialIcons;assembly=MaterialIcons"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
+        Title="MainWindow" Height="800" Width="800">
 
     <Window.DataContext>
         <local:MainViewModel/>
@@ -30,7 +30,7 @@
                 <Button Command="{Binding CreateHashes}">
                     <materialIcons:MaterialIcon Icon="ic_save"/>
                 </Button>
-                <Button Command="{Binding ComputeDupes}">
+                <Button Command="{Binding LoadTemplateCollection}">
                     <materialIcons:MaterialIcon Icon="ic_art_track"/>
                 </Button>
                 <CheckBox IsChecked="{Binding IsHardMode}">
@@ -42,17 +42,19 @@
         </ToolBarTray>
 
 
-        <DataGrid x:Name="Table1" Grid.Row="1" RowHeight="200" ItemsSource="{Binding PairDataCollection, BindsDirectlyToSource=True, IsAsync=False, Mode=OneWay}" CanUserAddRows="False"  CellStyle="{StaticResource ImageCellStyle}" AutoGenerateColumns="False" HeadersVisibility="None" GridLinesVisibility="None" 
+        <!--EnableColumnVirtualization="True"
+                  EnableRowVirtualization="True"
+        
+        -->
+        <DataGrid x:Name="Table1" Grid.Row="1" RowHeight="200" ItemsSource="{Binding PairDataCollection, BindsDirectlyToSource=True, IsAsync=True, Mode=OneWay}" CanUserAddRows="False"  CellStyle="{StaticResource ImageCellStyle}" AutoGenerateColumns="False" HeadersVisibility="None" GridLinesVisibility="None" 
 
                   ScrollViewer.CanContentScroll="True" 
-                  EnableColumnVirtualization="True"
-                  EnableRowVirtualization="True"
-                  VirtualizingStackPanel.VirtualizationMode="Standard"
-                  VirtualizingStackPanel.IsVirtualizing="True"
-                  VirtualizingStackPanel.ScrollUnit="Pixel" 
-                  VirtualizingStackPanel.IsVirtualizingWhenGrouping="True"
-                  VirtualizingStackPanel.CacheLengthUnit="Page"
-                  VirtualizingStackPanel.IsContainerVirtualizable="True" >
+                  VirtualizingPanel.ScrollUnit="Pixel" 
+                  VirtualizingPanel.VirtualizationMode="Standard"
+                  VirtualizingPanel.IsVirtualizing="True"
+                  VirtualizingPanel.IsVirtualizingWhenGrouping="True"
+                  VirtualizingPanel.CacheLengthUnit="Page"
+                  VirtualizingPanel.IsContainerVirtualizable="True" >
             
 
             <DataGrid.Columns>
