@@ -44,17 +44,20 @@
 
         <!--EnableColumnVirtualization="True"
                   EnableRowVirtualization="True"
-        
-        -->
-        <DataGrid x:Name="Table1" Grid.Row="1" RowHeight="200" ItemsSource="{Binding PairDataCollection, BindsDirectlyToSource=True, IsAsync=True, Mode=OneWay}" CanUserAddRows="False"  CellStyle="{StaticResource ImageCellStyle}" AutoGenerateColumns="False" HeadersVisibility="None" GridLinesVisibility="None" 
-
-                  ScrollViewer.CanContentScroll="True" 
-                  VirtualizingPanel.ScrollUnit="Pixel" 
-                  VirtualizingPanel.VirtualizationMode="Standard"
+                        VirtualizingPanel.VirtualizationMode="Standard"
                   VirtualizingPanel.IsVirtualizing="True"
                   VirtualizingPanel.IsVirtualizingWhenGrouping="True"
                   VirtualizingPanel.CacheLengthUnit="Page"
-                  VirtualizingPanel.IsContainerVirtualizable="True" >
+                  VirtualizingPanel.IsContainerVirtualizable="True" 
+        
+        -->
+        <DataGrid x:Name="Table1" Grid.Row="1" RowHeight="{Binding ThumbnailSize}" ItemsSource="{Binding PairDataCollection}" CanUserAddRows="False"  CellStyle="{StaticResource ImageCellStyle}" AutoGenerateColumns="False" HeadersVisibility="None" GridLinesVisibility="Horizontal" 
+
+                  ScrollViewer.CanContentScroll="True" 
+                  VirtualizingPanel.ScrollUnit="Pixel" 
+                  
+
+        >
             
 
             <DataGrid.Columns>
@@ -69,7 +72,7 @@
                                     </ItemsPanelTemplate>
                                 </ListView.ItemsPanel>-->
 
-                                <Grid Height="200" Width="400">
+                                <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*"/>
@@ -81,13 +84,13 @@
                                     <Button.InputBindings>
                                         <MouseBinding Command="{Binding Image1.ImageClick}" Gesture="LeftDoubleClick" />
                                     </Button.InputBindings>
-                                    <Image Source="{Binding Image1.Image}" Tag="{Binding Image1.FilePath}"/>
+                                    <Image Source="{Binding Image1.Image, IsAsync=True, Mode=OneWay}" Tag="{Binding Image1.FilePath}"/>
                                 </Button>
                                 <Button  Grid.Column="2">
                                     <Button.InputBindings>
                                         <MouseBinding Command="{Binding Image2.ImageClick}" Gesture="LeftDoubleClick" />
                                     </Button.InputBindings>
-                                    <Image Source="{Binding Image2.Image}" Tag="{Binding Image2.FilePath}"/>
+                                    <Image Source="{Binding Image2.Image, IsAsync=True, Mode=OneWay}" Tag="{Binding Image2.FilePath}" />
                                 </Button>
                             </Grid>
                             <!--</ListView>-->

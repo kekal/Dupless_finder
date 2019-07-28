@@ -1,20 +1,26 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Drawing;
 using System.Windows;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
 using System.Windows.Media.Imaging;
 using System.Threading.Tasks;
-using System.Windows.Controls;
+using System.Windows.Interop;
+using System.Windows.Media;
 using Dupless_finder;
 using OpenCvSharp;
 using OpenCvSharp.XFeatures2D;
 using static System.Math;
+using Image = System.Windows.Controls.Image;
 using Timer = System.Threading.Timer;
+using System.Runtime.Remoting;
 
 namespace Dupples_finder_UI
 {
@@ -23,8 +29,9 @@ namespace Dupples_finder_UI
         public static MainViewModel Inst;
         public MainViewModel()
         {
-            PrepareCommands();
             Inst = this;
+            PrepareCommands();
+            ThumbnailSize = 200;
             IsLoaded = true;
             PairDataCollection = new List<ImagePair>();
             DataCollection = new List<ImageInfo>();
@@ -76,6 +83,8 @@ namespace Dupples_finder_UI
         //    get { return (string[])GetValue(FilesProperty); }
         //    set { SetValue(FilesProperty, value); }
         //}
+
+        public ushort ThumbnailSize { get; }
 
         public IList<ImageInfo> DataCollection
         {
@@ -151,7 +160,7 @@ namespace Dupples_finder_UI
         {
             LoadCommad = new RelayCommand(() =>
             {
-                if (GetAllPathes(out var pathes) || pathes == null)
+                if (!GetAllPathes(out var pathes, string.Empty))
                 {
                     return;
                 }
@@ -174,15 +183,12 @@ namespace Dupples_finder_UI
             LoadTemplateCollection = new RelayCommand(() =>
             {
                 IList<ImagePair> colle = new List<ImagePair>();
-                if (GetAllPathes(out var pathes) || pathes == null)
+                if (!GetAllPathes(out var pathes, ""/*@"C:\Users\Main\Desktop\cosplay\MasyuTaitu"*/))
                 {
                     return;
                 }
 
                 DataCollection = pathes.Select(path => new ImageInfo {FilePath = path}).ToList();
-
-                LoadCollectionToMemory(DataCollection);
-
                 for (var i = 1; i < DataCollection.Count; i += 2)
                 {
                     colle.Add(new ImagePair
@@ -192,6 +198,10 @@ namespace Dupples_finder_UI
                     });
                 }
                 PairDataCollection = colle;
+
+                //LoadCollectionToMemory(DataCollection);
+
+                
 
             });
         }
@@ -203,22 +213,26 @@ namespace Dupples_finder_UI
 
         #region Methods
 
-        private static bool GetAllPathes(out IEnumerable<string> pathes)
+        private static bool GetAllPathes(out IEnumerable<string> pathes, string rootFolder)
         {
-            using (var fbd = new FolderBrowserDialogEx())
+            if (rootFolder == string.Empty)
             {
-                fbd.ShowNewFolderButton = false;
-                DialogResult result = fbd.ShowDialog();
-
-                if (result != DialogResult.OK || string.IsNullOrWhiteSpace(fbd.SelectedPath))
+                using (var fbd = new FolderBrowserDialogEx())
                 {
-                    pathes = null;
-                    return true;
+                    fbd.ShowNewFolderButton = false;
+                    var result = fbd.ShowDialog();
+                    rootFolder = fbd.SelectedPath;
+                    if (result != DialogResult.OK || string.IsNullOrWhiteSpace(rootFolder))
+                    {
+                        pathes = null;
+                        return false;
+                    }
                 }
-
-                pathes = DirSearch(fbd.SelectedPath, ".jpg", ".png");
             }
-            return false;
+
+            pathes = DirSearch(rootFolder, ".jpg", ".png");
+
+            return true;
         }
 
         private Timer _t;
@@ -252,10 +266,16 @@ namespace Dupples_finder_UI
 
             Task.Factory.StartNew(() =>
             {
-                foreach (var info in collection)
+                Thread.CurrentThread.Priority = ThreadPriority.Lowest;
+                //foreach (var info in collection)
+                //{
+                //    var a = info.Image;
+                //}
+                Parallel.ForEach(collection, info =>
                 {
+                    Thread.CurrentThread.Priority = ThreadPriority.Lowest;
                     var a = info.Image;
-                }
+                });
             }).ContinueWith(e =>
             {
                 Dispatcher.Invoke(MainWindow.Update);
@@ -466,11 +486,13 @@ namespace Dupples_finder_UI
 
         private void PrepareCommands()
         {
-            ImageClick = new RelayCommand(OpenImageRoutine);
+            ImageClick = new RelayCommand(() => Process.Start(FilePath));
         }
 
         private byte[] _buffer;
+
         private BitmapImage _image;
+
         public BitmapImage Image
         {
             get
@@ -479,39 +501,43 @@ namespace Dupples_finder_UI
                 {
                     return _image;
                 }
-                BitmapImage reducedImage;
-                lock (Lock1)
-                {
-                    if (_image != null)
-                    {
-                        return _image;
-                    }
-                    var DecodeSize = 200;
-                    // Only load thumbnails
-                    _buffer = null;
-                    //_buffer = File.ReadAllBytes(FilePath);
-                    //var mem = new MemoryStream(_buffer);
-                    reducedImage = new BitmapImage();
-                    reducedImage.BeginInit();
-                    reducedImage.DecodePixelHeight = DecodeSize;
-                    reducedImage.CacheOption = BitmapCacheOption.OnLoad;
-                    reducedImage.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
-                    //_reducedImage.DecodePixelWidth = DecodeSize;
-                    reducedImage.Rotation = Rotation.Rotate0;
-                    //reducedImage.StreamSource = mem;
-                    try
-                    {
-                        reducedImage.StreamSource = new FileStream(FilePath, FileMode.Open/*, FileAccess.Read, FileShare.Read*/);
-                    }
-                    catch (Exception e)
-                    {
-                        Trace.WriteLine(e.Message + e.InnerException?.Message);
-                    }
-                    reducedImage.EndInit();
-                    reducedImage.Freeze();
-                    //buffer = null;
-                    _image = reducedImage;
-                }
+
+                // Only load thumbnails
+                _buffer = null;
+                double decodeSize = MainViewModel.Inst.ThumbnailSize;
+
+                //lock (Lock1)
+                //{
+                //    if (_image != null)
+                //    {
+                //        return _image;
+                //    }
+                //var mat = new Mat(FilePath);
+                //var scale = Math.Min(decodeSize / mat.Width, decodeSize / mat.Height);
+                //var resizedMat = mat.Resize(new OpenCvSharp.Size(0, 0), scale, scale, InterpolationFlags.Area);
+                //var mem = resizedMat.ToMemoryStream(".png");
+                //resizedMat?.Dispose();
+                //mat?.Dispose();
+                _buffer = File.ReadAllBytes(FilePath);
+                //}
+                var mem = new MemoryStream(_buffer);
+
+                var reducedImage = new BitmapImage();
+                reducedImage.BeginInit();
+                reducedImage.DecodePixelHeight = (int)decodeSize;
+                reducedImage.CacheOption = BitmapCacheOption.OnLoad;
+                reducedImage.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
+                //_reducedImage.DecodePixelWidth = DecodeSize;
+                reducedImage.Rotation = Rotation.Rotate0;
+                reducedImage.StreamSource = mem;
+                //reducedImage.StreamSource = new FileStream(FilePath, FileMode.Open /*, FileAccess.Read, FileShare.Read*/);
+                reducedImage.EndInit();
+                reducedImage.Freeze();
+
+                //mem?.Close();
+                //_buffer = null;
+                _image = reducedImage;
+
                 return reducedImage;
             }
             set
@@ -526,11 +552,6 @@ namespace Dupples_finder_UI
         public string FilePath { get; set; }
 
         public RelayCommand ImageClick { get; private set; }
-
-        private void OpenImageRoutine()
-        {
-            Process.Start(FilePath);
-        }
 
         public void Dispose()
         {
