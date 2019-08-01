@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.Windows;
 using System.IO;
 using System.Linq;
@@ -58,11 +59,11 @@ namespace Dupples_finder_UI
 
         #region Events
 
-        public event EventHandler<long> MemoryDisplayEvent;
-        public virtual void OnMemoryDisplayEvent(long alloc)
-        {
-            MemoryDisplayEvent?.Invoke(this, alloc);
-        } 
+        //public event EventHandler<long> MemoryDisplayEvent;
+        //public virtual void OnMemoryDisplayEvent(long alloc)
+        //{
+        //    MemoryDisplayEvent?.Invoke(this, alloc);
+        //} 
 
         #endregion
 
@@ -77,12 +78,6 @@ namespace Dupples_finder_UI
         // ==================================================================================================================
         
         #region Injected
-
-        //public string[] Files
-        //{
-        //    get { return (string[])GetValue(FilesProperty); }
-        //    set { SetValue(FilesProperty, value); }
-        //}
 
         public ushort ThumbnailSize { get; }
 
@@ -151,10 +146,9 @@ namespace Dupples_finder_UI
         #region Commands
 
         public RelayCommand LoadCommad { get; private set; }
-
         public RelayCommand CreateHashes { get; private set; }
         public RelayCommand LoadTemplateCollection { get; private set; }
-
+        public RelayCommand CreateHashesFromCollection { get; private set; }
 
         private void PrepareCommands()
         {
@@ -166,7 +160,7 @@ namespace Dupples_finder_UI
                 }
 
                 DataCollection = pathes.Select(path => new ImageInfo {FilePath = path}).ToList();
-                LoadCollectionToMemory(DataCollection);
+                //LoadCollectionToMemory(DataCollection);
             });
 
             CreateHashes = new RelayCommand(() =>
@@ -199,10 +193,18 @@ namespace Dupples_finder_UI
                 }
                 PairDataCollection = colle;
 
-                //LoadCollectionToMemory(DataCollection);
+                LoadCollectionToMemory(DataCollection);
+            });
 
-                
+            CreateHashesFromCollection = new RelayCommand(() =>
+            {
+                IsProgrVisible = Visibility.Visible;
+                Thread.CurrentThread.Priority = ThreadPriority.Highest;
+                //var pathCollection = DataCollection.Select(ii => ii.FilePath);
 
+                CalcSiftHashes(DataCollection)
+                    .ContinueWith(e1 => { _matches = CreateMatchCollection(_hashesDict); })
+                    .ContinueWith(e2 => { PopulateDupes(); });
             });
         }
 
@@ -263,18 +265,44 @@ namespace Dupples_finder_UI
         private void LoadCollectionToMemory(IList<ImageInfo> collection)
         {
             Dispatcher.Invoke(() => IsLoaded = false);
-
+            IsProgrVisible = Visibility.Visible;
             Task.Factory.StartNew(() =>
             {
+       
                 Thread.CurrentThread.Priority = ThreadPriority.Lowest;
+                double currentProgress = 0.0;
+                double minProgressStep = 100.0 / collection.Count;
+
                 //foreach (var info in collection)
                 //{
+                //    Thread.Sleep(1);
                 //    var a = info.Image;
+                //    Dispatcher.BeginInvoke(new Func<bool>(() =>
+                //    {
+                //        currentProgress += minProgressStep;
+                //        CalcProgress = currentProgress;
+                //        if (Abs(currentProgress - 100) < 0.1)
+                //        {
+                //            IsProgrVisible = Visibility.Collapsed;
+                //        }
+                //        return false;
+                //    }));
                 //}
-                Parallel.ForEach(collection, info =>
+                Parallel.ForEach(collection, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount - 1 }, info =>
                 {
                     Thread.CurrentThread.Priority = ThreadPriority.Lowest;
+                    Thread.Sleep(1);
                     var a = info.Image;
+                    Dispatcher.BeginInvoke(new Func<bool>(() =>
+                    {
+                        currentProgress += minProgressStep;
+                        CalcProgress = currentProgress;
+                        if (Abs(currentProgress - 100) < 0.1)
+                        {
+                            IsProgrVisible = Visibility.Collapsed;
+                        }
+                        return false;
+                    }));
                 });
             }).ContinueWith(e =>
             {
@@ -325,10 +353,10 @@ namespace Dupples_finder_UI
             return list;
         }
 
-        public ImageInfo GetImageInfo(Image image)
-        {
-            return DataCollection.FirstOrDefault(x => x.FilePath == (string)image.Tag);
-        }
+        //public ImageInfo GetImageInfo(Image image)
+        //{
+        //    return DataCollection.FirstOrDefault(x => x.FilePath == (string)image.Tag);
+        //}
         
         #region SIFT Calculations
 
@@ -364,9 +392,9 @@ namespace Dupples_finder_UI
                         var linearFactors = CalcLinearFactors(hashArray, j1, i1);
                         matchList.Add(new Program.Result(hashArray[j1].Key, hashArray[i1].Key, linearFactors.Item1));
 
-                        Interlocked.Exchange(ref currentProgress, currentProgress + minProgressStep);
                         Dispatcher.BeginInvoke(new Func<bool>(() =>
                         {
+                            currentProgress += minProgressStep;
                             CalcProgress = currentProgress;
                             if (Abs(currentProgress - 100) < 0.1)
                             {
@@ -389,6 +417,7 @@ namespace Dupples_finder_UI
 
         private static Tuple<double, double> CalcLinearFactors(KeyValuePair<string, MatOfFloat>[] hashArray, int j, int i)
         {
+            Thread.CurrentThread.Priority = ThreadPriority.Lowest;
             var bfMatches = new BFMatcher(NormTypes.L2, crossCheck: true).Match(hashArray[j].Value, hashArray[i].Value).OrderBy(o => o.Distance).Select(o => o.Distance).ToList();
 
             var range = bfMatches.Count > 10 ? bfMatches.Count / 2 : bfMatches.Count;
@@ -427,7 +456,8 @@ namespace Dupples_finder_UI
                 var task = new Task(() =>
                 {
                     Thread.CurrentThread.Priority = ThreadPriority.Lowest;
-                    var sourceMat = new Mat(path,ImreadModes.GrayScale).Resize(new OpenCvSharp.Size(thumbSize, thumbSize), 0, 0, InterpolationFlags.Nearest);
+                    Mat sourceMat = new Mat(path, ImreadModes.GrayScale);
+                    var resizedMat = sourceMat.Resize(new OpenCvSharp.Size(thumbSize, thumbSize), 0, 0, InterpolationFlags.Nearest);
 
                     //var scale = (double)thumbSize / Max(sourceMat.Width, sourceMat.Height);
                     //var resizedMat = sourceMat.Resize(new OpenCvSharp.Size(0, 0), scale, scale, InterpolationFlags.Nearest);
@@ -435,20 +465,21 @@ namespace Dupples_finder_UI
                     //var grayScaledMat = new Mat();
                     //Cv2.CvtColor(resizedMat, grayScaledMat, ColorConversionCodes.BGR2GRAY);
 
-                    var siftPoints = SIFT.Create();
+                    SIFT siftPoints = SIFT.Create();
 
                     var descriptors = new MatOfFloat();
 
                     //var keypoints = sift.Detect(gray).Take(KEYPOINTS_NUMBER).ToArray();
                     //sift.Compute(gray, ref keypoints, descriptors);
-                    siftPoints.DetectAndCompute(sourceMat, null, out KeyPoint[] keypoints, descriptors);
+                    siftPoints.DetectAndCompute(resizedMat, null, out KeyPoint[] keypoints, descriptors);
 
                     _hashesDict.TryAdd(path, descriptors);
 
                     //resizedMat?.Dispose();
                     siftPoints.Dispose();
                     //grayScaledMat.Dispose();
-                    sourceMat.Dispose();
+                    resizedMat.Release();
+                    sourceMat.Release();
 
                     currentProgress += minProgressStep;
                     Dispatcher.BeginInvoke(new Func<bool>(() =>
@@ -469,118 +500,101 @@ namespace Dupples_finder_UI
                 task.Start();
             }
             return Task.WhenAll(tasks.ToArray());
-        } 
+        }
+
+        private Task CalcSiftHashes(IEnumerable<ImageInfo> infos, int thumbSize = 100)
+        {
+            var currentProgress = 0.0;
+            var minProgressStep = 100.0 / infos.Count();
+
+            if (_hashesDict?.Values != null)
+            {
+                foreach (var mat in _hashesDict.Values)
+                {
+                    mat?.Release();
+                }
+            }
+
+            _hashesDict = new ConcurrentDictionary<string, MatOfFloat>();
+
+            var tasks = new List<Task>();
+            foreach (var info in infos)
+            {
+                var task = new Task(() =>
+                {
+                    Thread.CurrentThread.Priority = ThreadPriority.Lowest;
+                    var mem = new MemoryStream();
+
+                    // copy to byte array
+                    int stride = info.Image.PixelWidth * 4;
+                    byte[] buffer = new byte[stride * info.Image.PixelHeight];
+                    info.Image.CopyPixels(buffer, stride, 0);
+
+                    // create bitmap
+                    Bitmap bitmap = new Bitmap(info.Image.PixelWidth, info.Image.PixelHeight, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+
+                    // lock bitmap data
+                    BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.WriteOnly, bitmap.PixelFormat);
+
+                    // copy byte array to bitmap data
+                    Marshal.Copy(buffer, 0, bitmapData.Scan0, buffer.Length);
+
+                    // unlock
+                    bitmap.UnlockBits(bitmapData);
+
+                    bitmap.Save(mem,ImageFormat.Bmp);
+
+
+                    Mat sourceMat = Cv2.ImDecode(mem.GetBuffer(), ImreadModes.Unchanged);
+                    var resizedMat = sourceMat.Resize(new OpenCvSharp.Size(thumbSize, thumbSize), 0, 0, InterpolationFlags.Nearest);
+
+                    //var scale = (double)thumbSize / Max(sourceMat.Width, sourceMat.Height);
+                    //var resizedMat = sourceMat.Resize(new OpenCvSharp.Size(0, 0), scale, scale, InterpolationFlags.Nearest);
+
+                    //var grayScaledMat = new Mat();
+                    //Cv2.CvtColor(resizedMat, grayScaledMat, ColorConversionCodes.BGR2GRAY);
+
+                    var siftPoints = SIFT.Create();
+
+                    var descriptors = new MatOfFloat();
+
+                    //var keypoints = sift.Detect(gray).Take(KEYPOINTS_NUMBER).ToArray();
+                    //sift.Compute(gray, ref keypoints, descriptors);
+                    siftPoints.DetectAndCompute(resizedMat, null, out KeyPoint[] keypoints, descriptors);
+
+                    _hashesDict.TryAdd(info.FilePath, descriptors);
+
+                    //resizedMat?.Dispose();
+                    siftPoints.Dispose();
+                    //grayScaledMat.Dispose();
+                    resizedMat.Release();
+                    sourceMat.Release();
+
+                    currentProgress += minProgressStep;
+                    Dispatcher.BeginInvoke(new Func<bool>(() =>
+                    {
+                        CalcProgress = currentProgress;
+                        if (Abs(currentProgress - 100) < 0.1)
+                        {
+                            IsProgrVisible = Visibility.Collapsed;
+                        }
+                        return false;
+                    }));
+                });
+
+                tasks.Add(task);
+            }
+            foreach (var task in tasks)
+            {
+                task.Start();
+            }
+            return Task.WhenAll(tasks.ToArray());
+        }
+
+
+
         #endregion
         #endregion
 
-        // ==================================================================================================================
-    }
-
-    public class ImageInfo : IDisposable
-    {
-        private static readonly object Lock1 = new object();
-        public ImageInfo()
-        {
-            PrepareCommands();
-        }
-
-        private void PrepareCommands()
-        {
-            ImageClick = new RelayCommand(() => Process.Start(FilePath));
-        }
-
-        private byte[] _buffer;
-
-        private BitmapImage _image;
-
-        public BitmapImage Image
-        {
-            get
-            {
-                if (_image != null)
-                {
-                    return _image;
-                }
-
-                // Only load thumbnails
-                _buffer = null;
-                double decodeSize = MainViewModel.Inst.ThumbnailSize;
-
-                //lock (Lock1)
-                //{
-                //    if (_image != null)
-                //    {
-                //        return _image;
-                //    }
-                //var mat = new Mat(FilePath);
-                //var scale = Math.Min(decodeSize / mat.Width, decodeSize / mat.Height);
-                //var resizedMat = mat.Resize(new OpenCvSharp.Size(0, 0), scale, scale, InterpolationFlags.Area);
-                //var mem = resizedMat.ToMemoryStream(".png");
-                //resizedMat?.Dispose();
-                //mat?.Dispose();
-                _buffer = File.ReadAllBytes(FilePath);
-                //}
-                var mem = new MemoryStream(_buffer);
-
-                var reducedImage = new BitmapImage();
-                reducedImage.BeginInit();
-                reducedImage.DecodePixelHeight = (int)decodeSize;
-                reducedImage.CacheOption = BitmapCacheOption.OnLoad;
-                reducedImage.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
-                //_reducedImage.DecodePixelWidth = DecodeSize;
-                reducedImage.Rotation = Rotation.Rotate0;
-                reducedImage.StreamSource = mem;
-                //reducedImage.StreamSource = new FileStream(FilePath, FileMode.Open /*, FileAccess.Read, FileShare.Read*/);
-                reducedImage.EndInit();
-                reducedImage.Freeze();
-
-                //mem?.Close();
-                //_buffer = null;
-                _image = reducedImage;
-
-                return reducedImage;
-            }
-            set
-            {
-                if (!ReferenceEquals(_image, value))
-                {
-                    _image = value;
-                }
-            }
-        }
-
-        public string FilePath { get; set; }
-
-        public RelayCommand ImageClick { get; private set; }
-
-        public void Dispose()
-        {
-            Image = null;
-        }
-    }
-
-    public class ImagePair : IDisposable
-    {
-        public double Match;
-        private ImageInfo _image1;
-        private ImageInfo _image2;
-
-        public ImageInfo Image1
-        {
-            get { return _image1; }
-            set { _image1 = value; }
-        }
-
-        public ImageInfo Image2
-        {
-            get { return _image2; }
-            set { _image2 = value; }
-        }
-
-        public void Dispose()
-        {
-            _image1.Dispose();
-            _image2.Dispose();
-        }
     }
 }

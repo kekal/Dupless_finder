@@ -33,6 +33,9 @@
                 <Button Command="{Binding LoadTemplateCollection}">
                     <materialIcons:MaterialIcon Icon="ic_art_track"/>
                 </Button>
+                <Button Command="{Binding CreateHashesFromCollection}">
+                    <materialIcons:MaterialIcon Icon="ic_autorenew"/>
+                </Button>
                 <CheckBox IsChecked="{Binding IsHardMode}">
                     <materialIcons:MaterialIcon Icon="ic_trending_up"/>
                 </CheckBox>
@@ -58,7 +61,7 @@
                   
 
         >
-            
+
 
             <DataGrid.Columns>
                 <DataGridTemplateColumn CanUserResize="False" >
@@ -72,25 +75,25 @@
                                     </ItemsPanelTemplate>
                                 </ListView.ItemsPanel>-->
 
-                                <Grid>
+                            <Grid Height="{Binding RowHeight, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type DataGrid}}}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                
+
 
                                 <Button>
                                     <Button.InputBindings>
                                         <MouseBinding Command="{Binding Image1.ImageClick}" Gesture="LeftDoubleClick" />
                                     </Button.InputBindings>
-                                    <Image Source="{Binding Image1.Image, IsAsync=True, Mode=OneWay}" Tag="{Binding Image1.FilePath}"/>
+                                    <Image Source="{Binding Image1.Image, IsAsync=True, Mode=OneWay}" Tag="{Binding Image1.FilePath}" Height="{Binding RowHeight, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type DataGrid}}}" />
                                 </Button>
                                 <Button  Grid.Column="2">
                                     <Button.InputBindings>
                                         <MouseBinding Command="{Binding Image2.ImageClick}" Gesture="LeftDoubleClick" />
                                     </Button.InputBindings>
-                                    <Image Source="{Binding Image2.Image, IsAsync=True, Mode=OneWay}" Tag="{Binding Image2.FilePath}" />
+                                    <Image Source="{Binding Image2.Image, IsAsync=True, Mode=OneWay}" Tag="{Binding Image2.FilePath}" Height="{Binding RowHeight, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type DataGrid}}}" />
                                 </Button>
                             </Grid>
                             <!--</ListView>-->
@@ -124,130 +127,3 @@
     </ItemsControl>-->
     </Grid>
 </Window>
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-   
-
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-   
-
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-   
-
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-   

@@ -24,7 +24,7 @@ namespace Dupples_finder_UI
 
         public static void Update()
         {
-            _inst.Table1.UpdateLayout();
+            //_inst.Table1.UpdateLayout();
         }
     }
 }
