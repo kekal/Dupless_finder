@@ -25,7 +25,7 @@ namespace Dupples_finder_UI
         }
         #region ICommand Members
 
-        bool ICommand.CanExecute(object parameter)
+        public bool CanExecute(object parameter)
         {
             if (_TargetCanExecuteMethod != null)
             {
@@ -42,7 +42,7 @@ namespace Dupples_finder_UI
         // Prism commands solve this in their implementation
         public event EventHandler CanExecuteChanged = delegate { };
 
-        void ICommand.Execute(object parameter)
+        public void Execute(object parameter)
         {
             if (_TargetExecuteMethod != null)
             {
@@ -74,7 +74,7 @@ namespace Dupples_finder_UI
         }
         #region ICommand Members
 
-        bool ICommand.CanExecute(object parameter)
+        public bool CanExecute(object parameter)
         {
             if (_TargetCanExecuteMethod != null)
             {
@@ -92,7 +92,7 @@ namespace Dupples_finder_UI
         // Prism commands solve this in their implementation
         public event EventHandler CanExecuteChanged = delegate { };
 
-        void ICommand.Execute(object parameter)
+        public void Execute(object parameter)
         {
             if (_TargetExecuteMethod != null)
             {

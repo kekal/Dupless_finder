@@ -16,7 +16,7 @@ namespace Dupless_finder
 {
     public class Program
     {
-        private static int KEYPOINTS_NUMBER = 1000;
+        //private static int KEYPOINTS_NUMBER = 1000;
         private static int THUMB_SIZE = 200;
 
         static void Main(string[] args)

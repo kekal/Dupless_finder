@@ -299,7 +299,7 @@ namespace Dupless_finder
             public Rectangle BoundaryRect;
             public BitmapData BmpData;
             public Bitmap Bitmap;
-            public IntPtr Ptr;
+            private IntPtr Ptr;
             public int SubPixelCount;
             public int BitmapSize;
             public byte[] RgbValues;
@@ -325,23 +325,32 @@ namespace Dupless_finder
                 return outputInfo.Bitmap;
             }
 
+            private bool IsDisposed { get; set; }
             public void Dispose()
             {
-                if (Bitmap != null && BmpData != null)
+                Dispose(true);
+                GC.SuppressFinalize(this);
+            }
+
+            protected virtual void Dispose(bool disposing)
+            {
+                if (!IsDisposed)
                 {
-                    try
+                    if (disposing && (Bitmap != null && BmpData != null))
                     {
-                        Bitmap.UnlockBits(BmpData);
+                        try
+                        {
+                            Bitmap.UnlockBits(BmpData);
+                        }
+                        catch {}
                     }
-                    catch (Exception)
-                    {
-                    }
+                    IsDisposed = true;
                 }
             }
 
             ~BitmapInfo()
             {
-                Dispose();
+                Dispose(false);
             }
         }
     }

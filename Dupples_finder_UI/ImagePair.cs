@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.Threading;
 using System.Windows.Media.Imaging;
@@ -7,7 +8,7 @@ using OpenCvSharp;
 
 namespace Dupples_finder_UI
 {
-    public class ImagePair : IDisposable
+    public class ImagePair : DisposableObject
     {
         public double Match;
         private ImageInfo _image1;
@@ -25,107 +26,115 @@ namespace Dupples_finder_UI
             set { _image2 = value; }
         }
 
-        public void Dispose()
+
+
+        #region Disposing
+
+        protected override void Clean()
         {
             _image1.Dispose();
             _image2.Dispose();
+            _image1 = null;
+            _image2 = null;
         }
+
+        #endregion
     }
 
     // ==================================================================================================================
 
 
-    public class ImageInfo : IDisposable
+    public class ImageInfo : DisposableObject
     {
-        private static readonly object Lock1 = new object();
+        private static readonly Semaphore Sem = new Semaphore(Environment.ProcessorCount - 1, Environment.ProcessorCount - 1);
+        public string FilePath { get; set; }
 
-        private static Semaphore sem = new Semaphore(Environment.ProcessorCount - 1, Environment.ProcessorCount - 1);
-        //static Semaphore sem = new Semaphore(2, 2);
-
-        public ImageInfo()
+        private BitmapImage _image;
+        public BitmapImage Image
         {
+            get
+            {
+                if (Environment.StackTrace.Contains("Clr"))
+                {
+                    Trace.WriteLine($"Main thread requested {Path.GetFileName(FilePath)}");
+                }
+                else
+                {
+                    Trace.WriteLine($"{Thread.CurrentThread.ManagedThreadId} loads new {Path.GetFileName(FilePath)}");
+                }
+
+
+                if (_image == null)
+                {
+                    _image = Laz.Value;
+                    return _image;
+                }
+
+                Trace.WriteLine($"{Thread.CurrentThread.ManagedThreadId} gets already loaded {Path.GetFileName(FilePath)}");
+                return _image;
+            }
+        }
+
+        public ImageInfo(string path)
+        {
+            FilePath = path;
+            Trace.WriteLine($"{Thread.CurrentThread.ManagedThreadId} started to load {Path.GetFileName(FilePath)}");
+
+            Laz = new Lazy<BitmapImage>(() =>
+                {
+                    return LoadImage(FilePath);
+                }
+                /*, LazyThreadSafetyMode.None*/);
             PrepareCommands();
         }
 
+        public RelayCommand ImageClick { get; private set; }
         private void PrepareCommands()
         {
             ImageClick = new RelayCommand(() => Process.Start(FilePath));
         }
 
-        private byte[] _buffer;
+        public Lazy<BitmapImage> Laz { get; private set; }
 
-        private BitmapImage _image;
-
-        public BitmapImage Image
+        private static BitmapImage LoadImage(string path)
         {
-            get
-            {
-                if (_image != null)
-                {
-                    return _image;
-                }
+            double decodeSize = MainViewModel.Inst.ThumbnailSize;
 
-                // Only load thumbnails
-                _buffer = null;
-                double decodeSize = MainViewModel.Inst.ThumbnailSize;
+            Sem.WaitOne();
+            var sourceMat = new Mat(path);
+            Sem.Release();
 
-                MemoryStream mem;
-                Mat mat;
-                //lock (Lock1)
-                //{
-                sem.WaitOne();
-                if (_image != null)
-                {
-                    sem.Release();
-                    return _image;
-                }
-                mat = new Mat(FilePath);
-                sem.Release();
-                //}
-                var scale = Math.Min(decodeSize / mat.Width, decodeSize / mat.Height);
-                var resizedMat = mat.Resize(new OpenCvSharp.Size(0, 0), scale, scale, InterpolationFlags.Area);
-                //mem = resizedMat.ToMemoryStream(".jpg");
-                _buffer = resizedMat.ToBytes(".jpg");
-                resizedMat?.Release();
-                mat?.Dispose();
+            var scale = Math.Min(decodeSize / sourceMat.Width, decodeSize / sourceMat.Height);
+            var resizedMat = sourceMat.Resize(new OpenCvSharp.Size(0, 0), scale, scale, InterpolationFlags.Area);
 
-                //_buffer = File.ReadAllBytes(FilePath);
+            var reducedImage = new BitmapImage();
+            reducedImage.BeginInit();
+            reducedImage.StreamSource = resizedMat.ToMemoryStream(".jpg",
+                new ImageEncodingParam(ImwriteFlags.JpegQuality, 95),
+                new ImageEncodingParam(ImwriteFlags.JpegProgressive, 1),
+                new ImageEncodingParam(ImwriteFlags.JpegOptimize, 1));
 
-                mem = new MemoryStream(_buffer);
+            //reducedImage.StreamSource = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            reducedImage.DecodePixelHeight = MainViewModel.Inst.ThumbnailSize;
+            reducedImage.CacheOption = BitmapCacheOption.None;
+            reducedImage.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
+            reducedImage.Rotation = Rotation.Rotate0;
 
-                var reducedImage = new BitmapImage();
-                reducedImage.BeginInit();
-                reducedImage.DecodePixelHeight = (int) decodeSize;
-                reducedImage.CacheOption = BitmapCacheOption.OnLoad;
-                reducedImage.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
-                //_reducedImage.DecodePixelWidth = DecodeSize;
-                reducedImage.Rotation = Rotation.Rotate0;
-                reducedImage.StreamSource = mem;
-                //reducedImage.StreamSource = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-                reducedImage.EndInit();
-                reducedImage.Freeze();
+            reducedImage.EndInit();
+            reducedImage.Freeze();
 
-                //mem?.Close();
-                //_buffer = null;
-                _image = reducedImage;
-                return reducedImage;
-            }
-            set
-            {
-                if (!ReferenceEquals(_image, value))
-                {
-                    _image = value;
-                }
-            }
+            resizedMat.Release();
+            sourceMat.Release();
+
+            return reducedImage;
         }
+        
+        #region disposing
 
-        public string FilePath { get; set; }
-
-        public RelayCommand ImageClick { get; private set; }
-
-        public void Dispose()
+        protected override void Clean()
         {
-            Image = null;
+            Laz = null;
         }
+        #endregion
     }
 }

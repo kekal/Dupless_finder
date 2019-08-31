@@ -22,10 +22,11 @@ using static System.Math;
 using Image = System.Windows.Controls.Image;
 using Timer = System.Threading.Timer;
 using System.Runtime.Remoting;
+using System.Windows.Markup;
 
 namespace Dupples_finder_UI
 {
-    public class MainViewModel : DependencyObject
+    public class MainViewModel : DependencyObject, IDisposable
     {
         public static MainViewModel Inst;
         public MainViewModel()
@@ -159,20 +160,20 @@ namespace Dupples_finder_UI
                     return;
                 }
 
-                DataCollection = pathes.Select(path => new ImageInfo {FilePath = path}).ToList();
+                DataCollection = pathes.Select(path => new ImageInfo(path)).ToList();
                 //LoadCollectionToMemory(DataCollection);
             });
 
-            CreateHashes = new RelayCommand(() =>
-            {
-                IsProgrVisible = Visibility.Visible;
-                Thread.CurrentThread.Priority = ThreadPriority.Highest;
-                var pathCollection = DataCollection.Select(ii => ii.FilePath);
+            //CreateHashes = new RelayCommand(() =>
+            //{
+            //    IsProgrVisible = Visibility.Visible;
+            //    Thread.CurrentThread.Priority = ThreadPriority.Highest;
+            //    var pathCollection = DataCollection.Select(ii => ii.FilePath);
 
-                CalcSiftHashes(pathCollection)
-                    .ContinueWith(e1 => { _matches = CreateMatchCollection(_hashesDict); })
-                    .ContinueWith(e2 => { PopulateDupes(); });
-            });
+            //    CalcSiftHashes(pathCollection)
+            //        .ContinueWith(e1 => { _matches = CreateMatchCollection(_hashesDict); })
+            //        .ContinueWith(e2 => { PopulateDupes(); });
+            //});
 
             LoadTemplateCollection = new RelayCommand(() =>
             {
@@ -182,7 +183,7 @@ namespace Dupples_finder_UI
                     return;
                 }
 
-                DataCollection = pathes.Select(path => new ImageInfo {FilePath = path}).ToList();
+                DataCollection = pathes.Select(path => new ImageInfo(path)).ToList();
                 for (var i = 1; i < DataCollection.Count; i += 2)
                 {
                     colle.Add(new ImagePair
@@ -193,7 +194,7 @@ namespace Dupples_finder_UI
                 }
                 PairDataCollection = colle;
 
-                LoadCollectionToMemory(DataCollection);
+                //LoadCollectionToMemory(DataCollection);
             });
 
             CreateHashesFromCollection = new RelayCommand(() =>
@@ -257,7 +258,7 @@ namespace Dupples_finder_UI
                     Match = match.Match
                 }).ToList();
 
-                //LoadCollectionDupesToMemory(temp);
+                LoadCollectionDupesToMemory(temp);
                 PairDataCollection = temp;
             });
         }
@@ -379,6 +380,7 @@ namespace Dupples_finder_UI
                     {
                         continue;
                     }
+                    //Thread.Sleep(1);
                     Interlocked.Increment(ref completedIterations);
                     var i1 = i;
                     var j1 = j;
@@ -418,10 +420,23 @@ namespace Dupples_finder_UI
         private static Tuple<double, double> CalcLinearFactors(KeyValuePair<string, MatOfFloat>[] hashArray, int j, int i)
         {
             Thread.CurrentThread.Priority = ThreadPriority.Lowest;
-            var bfMatches = new BFMatcher(NormTypes.L2, crossCheck: true).Match(hashArray[j].Value, hashArray[i].Value).OrderBy(o => o.Distance).Select(o => o.Distance).ToList();
+            var matcher = new BFMatcher(NormTypes.L2SQR, crossCheck: true);
+            var bfMatches = matcher.Match(hashArray[j].Value, hashArray[i].Value).OrderBy(o => o.Distance).Select(o => o.Distance).ToList();
+            matcher.Dispose();
 
-            var range = bfMatches.Count > 10 ? bfMatches.Count / 2 : bfMatches.Count;
-            var matches = bfMatches.Take(range).ToArray();
+            float[] matches;
+            if (bfMatches.Count > 10)
+            {
+                matches = bfMatches.Take(bfMatches.Count / 2).ToArray();
+            }
+            else if (bfMatches.Count < 2)
+            {
+                matches = new[] {float.MaxValue, float.MaxValue};
+            }
+            else
+            {
+                matches = bfMatches.Take(bfMatches.Count).ToArray();
+            }
 
             var xes = new List<double>();
             var yes = new List<double>();
@@ -431,79 +446,82 @@ namespace Dupples_finder_UI
                 xes.Add(k);
                 yes.Add(matches[k]);
             }
+            
             var linearFactors = MathNet.Numerics.Fit.Line(xes.ToArray(), yes.ToArray());
             return linearFactors;
         }
 
-        private Task CalcSiftHashes(IEnumerable<string> paths, int thumbSize = 100)
-        {
-            var currentProgress = 0.0;
-            var minProgressStep = 100.0 / paths.Count();
+        //private Task CalcSiftHashes(IEnumerable<string> paths, int thumbSize = 100)
+        //{
+        //    var currentProgress = 0.0;
+        //    var minProgressStep = 100.0 / paths.Count();
 
-            if (_hashesDict?.Values != null)
-            {
-                foreach (var mat in _hashesDict.Values)
-                {
-                    mat?.Dispose();
-                }
-            }
+        //    if (_hashesDict?.Values != null)
+        //    {
+        //        foreach (var mat in _hashesDict.Values)
+        //        {
+        //            mat?.Dispose();
+        //        }
+        //    }
 
-            _hashesDict = new ConcurrentDictionary<string, MatOfFloat>();
+        //    _hashesDict = new ConcurrentDictionary<string, MatOfFloat>();
 
-            var tasks = new List<Task>();
-            foreach (var path in paths)
-            {
-                var task = new Task(() =>
-                {
-                    Thread.CurrentThread.Priority = ThreadPriority.Lowest;
-                    Mat sourceMat = new Mat(path, ImreadModes.GrayScale);
-                    var resizedMat = sourceMat.Resize(new OpenCvSharp.Size(thumbSize, thumbSize), 0, 0, InterpolationFlags.Nearest);
+        //    var tasks = new List<Task>();
+        //    foreach (var path in paths)
+        //    {
+        //        var task = new Task(() =>
+        //        {
+        //            Thread.CurrentThread.Priority = ThreadPriority.Lowest;
+        //            Thread.Sleep(1000);
+        //            Mat sourceMat = new Mat(path, ImreadModes.GrayScale);
+        //            var resizedMat = sourceMat.Resize(new OpenCvSharp.Size(thumbSize, thumbSize), 0, 0, InterpolationFlags.Nearest);
 
-                    //var scale = (double)thumbSize / Max(sourceMat.Width, sourceMat.Height);
-                    //var resizedMat = sourceMat.Resize(new OpenCvSharp.Size(0, 0), scale, scale, InterpolationFlags.Nearest);
+        //            //var scale = (double)thumbSize / Max(sourceMat.Width, sourceMat.Height);
+        //            //var resizedMat = sourceMat.Resize(new OpenCvSharp.Size(0, 0), scale, scale, InterpolationFlags.Nearest);
 
-                    //var grayScaledMat = new Mat();
-                    //Cv2.CvtColor(resizedMat, grayScaledMat, ColorConversionCodes.BGR2GRAY);
+        //            //var grayScaledMat = new Mat();
+        //            //Cv2.CvtColor(resizedMat, grayScaledMat, ColorConversionCodes.BGR2GRAY);
 
-                    SIFT siftPoints = SIFT.Create();
+        //            SIFT siftPoints = SIFT.Create();
 
-                    var descriptors = new MatOfFloat();
+        //            var descriptors = new MatOfFloat();
 
-                    //var keypoints = sift.Detect(gray).Take(KEYPOINTS_NUMBER).ToArray();
-                    //sift.Compute(gray, ref keypoints, descriptors);
-                    siftPoints.DetectAndCompute(resizedMat, null, out KeyPoint[] keypoints, descriptors);
+        //            //var keypoints = sift.Detect(gray).Take(KEYPOINTS_NUMBER).ToArray();
+        //            //sift.Compute(gray, ref keypoints, descriptors);
+        //            siftPoints.DetectAndCompute(resizedMat, null, out KeyPoint[] keypoints, descriptors);
 
-                    _hashesDict.TryAdd(path, descriptors);
+        //            _hashesDict.TryAdd(path, descriptors);
 
-                    //resizedMat?.Dispose();
-                    siftPoints.Dispose();
-                    //grayScaledMat.Dispose();
-                    resizedMat.Release();
-                    sourceMat.Release();
+        //            //resizedMat?.Dispose();
+        //            siftPoints.Dispose();
+        //            //grayScaledMat.Dispose();
+        //            resizedMat.Release();
+        //            sourceMat.Release();
 
-                    currentProgress += minProgressStep;
-                    Dispatcher.BeginInvoke(new Func<bool>(() =>
-                    {
-                        CalcProgress = currentProgress;
-                        if (Abs(currentProgress - 100) < 0.1)
-                        {
-                            IsProgrVisible = Visibility.Collapsed;
-                        }
-                        return false;
-                    }));
-                });
+        //            currentProgress += minProgressStep;
+        //            Dispatcher.BeginInvoke(new Func<bool>(() =>
+        //            {
+        //                CalcProgress = currentProgress;
+        //                if (Abs(currentProgress - 100) < 0.1)
+        //                {
+        //                    IsProgrVisible = Visibility.Collapsed;
+        //                }
+        //                return false;
+        //            }));
+        //        });
 
-                tasks.Add(task);
-            }
-            foreach (var task in tasks)
-            {
-                task.Start();
-            }
-            return Task.WhenAll(tasks.ToArray());
-        }
+        //        tasks.Add(task);
+        //    }
+        //    foreach (var task in tasks)
+        //    {
+        //        task.Start();
+        //    }
+        //    return Task.WhenAll(tasks.ToArray());
+        //}
 
         private Task CalcSiftHashes(IEnumerable<ImageInfo> infos, int thumbSize = 100)
         {
+            Trace.WriteLine($"CalcSiftHashes started");
             var currentProgress = 0.0;
             var minProgressStep = 100.0 / infos.Count();
 
@@ -518,18 +536,21 @@ namespace Dupples_finder_UI
             _hashesDict = new ConcurrentDictionary<string, MatOfFloat>();
 
             var tasks = new List<Task>();
-            foreach (var info in infos)
+            foreach (ImageInfo info in infos)
             {
                 var task = new Task(() =>
                 {
                     Thread.CurrentThread.Priority = ThreadPriority.Lowest;
+
+                    Thread.Sleep(1);
+                    
                     var mem = new MemoryStream();
 
                     // copy to byte array
                     int stride = info.Image.PixelWidth * 4;
                     byte[] buffer = new byte[stride * info.Image.PixelHeight];
                     info.Image.CopyPixels(buffer, stride, 0);
-
+                    
                     // create bitmap
                     Bitmap bitmap = new Bitmap(info.Image.PixelWidth, info.Image.PixelHeight, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
 
@@ -591,10 +612,24 @@ namespace Dupples_finder_UI
             return Task.WhenAll(tasks.ToArray());
         }
 
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _t.Dispose();
+                _t = null;
+            }
+        }
 
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
 
         #endregion
         #endregion
+
 
     }
 }
