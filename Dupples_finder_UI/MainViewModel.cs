@@ -183,7 +183,20 @@ namespace Dupples_finder_UI
                     return;
                 }
 
-                DataCollection = pathes.Select(path => new ImageInfo(path)).ToList();
+                if (DataCollection?.Count > 0)
+                {
+                    var oldPathes = DataCollection.Select(ii => ii.FilePath);
+                    var absentPathes = pathes.Where(p => !oldPathes.Contains(p));
+                    var tempCollection = absentPathes.Select(path => new ImageInfo(path)).ToList();
+                    tempCollection.AddRange(DataCollection);
+                    DataCollection = tempCollection;
+                }
+                else
+                {
+                    DataCollection = pathes.Select(path => new ImageInfo(path)).ToList();
+                }
+
+                
                 for (var i = 1; i < DataCollection.Count; i += 2)
                 {
                     colle.Add(new ImagePair

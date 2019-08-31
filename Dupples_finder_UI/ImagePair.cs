@@ -1,8 +1,12 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Media.Imaging;
 using OpenCvSharp;
 
@@ -50,6 +54,8 @@ namespace Dupples_finder_UI
         public string FilePath { get; set; }
 
         private BitmapImage _image;
+        public SortedList SortedList = SortedList.Synchronized(new SortedList(new Comparer(CultureInfo.CurrentCulture))) ;
+
         public BitmapImage Image
         {
             get
@@ -66,10 +72,15 @@ namespace Dupples_finder_UI
 
                 if (_image == null)
                 {
-                    _image = Laz.Value;
-                    return _image;
+                    if (Environment.StackTrace.Contains("Clr"))
+                    {
+                        Thread.CurrentThread.Priority = ThreadPriority.Lowest;
+                        Thread.Sleep(1);
+                        _image = Laz.Value;
+                        return _image;
+                    }
+                    
                 }
-
                 Trace.WriteLine($"{Thread.CurrentThread.ManagedThreadId} gets already loaded {Path.GetFileName(FilePath)}");
                 return _image;
             }
