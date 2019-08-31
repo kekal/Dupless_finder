@@ -40,7 +40,7 @@
                     <materialIcons:MaterialIcon Icon="ic_trending_up"/>
                 </CheckBox>-->
                 <Label Content="{Binding AllocMem}" />
-                <ProgressBar x:Name="Progr" Value="{Binding CalcProgress}" Width="200" Visibility="{Binding IsProgrVisible}"/>
+                <ProgressBar Value="{Binding CalcProgress}" Width="200" Visibility="{Binding IsProgrVisible}"/>
             </ToolBar>
         </ToolBarTray>
 

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -13,16 +12,11 @@ using System.Threading;
 using System.Windows.Forms;
 using System.Windows.Media.Imaging;
 using System.Threading.Tasks;
-using System.Windows.Interop;
-using System.Windows.Media;
 using Dupless_finder;
 using OpenCvSharp;
 using OpenCvSharp.XFeatures2D;
 using static System.Math;
-using Image = System.Windows.Controls.Image;
 using Timer = System.Threading.Timer;
-using System.Runtime.Remoting;
-using System.Windows.Markup;
 
 namespace Dupples_finder_UI
 {
@@ -207,14 +201,13 @@ namespace Dupples_finder_UI
                 }
                 PairDataCollection = colle;
 
-                //LoadCollectionToMemory(DataCollection);
+                LoadCollectionToMemory(DataCollection);
             });
 
             CreateHashesFromCollection = new RelayCommand(() =>
             {
                 IsProgrVisible = Visibility.Visible;
                 Thread.CurrentThread.Priority = ThreadPriority.Highest;
-                //var pathCollection = DataCollection.Select(ii => ii.FilePath);
 
                 CalcSiftHashes(DataCollection)
                     .ContinueWith(e1 => { _matches = CreateMatchCollection(_hashesDict); })
@@ -254,7 +247,7 @@ namespace Dupples_finder_UI
         private Timer _t;
         private void StartMemoryAmountPublishing()
         {
-            _t = new Timer(_ => Dispatcher.BeginInvoke(new Func<long>(() =>
+            _t = new Timer(_ => Dispatcher?.BeginInvoke(new Func<long>(() =>
             {
                 return AllocMem = Process.GetCurrentProcess().PrivateMemorySize64 / 1000000;
             })), null, 0, 300);
@@ -262,7 +255,7 @@ namespace Dupples_finder_UI
 
         private void PopulateDupes()
         {
-            Dispatcher.Invoke(() =>
+            Dispatcher?.Invoke(() =>
             {
                 var temp = _matches.Select(match => new ImagePair
                 {
@@ -278,7 +271,7 @@ namespace Dupples_finder_UI
 
         private void LoadCollectionToMemory(IList<ImageInfo> collection)
         {
-            Dispatcher.Invoke(() => IsLoaded = false);
+            Dispatcher?.Invoke(() => IsLoaded = false);
             IsProgrVisible = Visibility.Visible;
             Task.Factory.StartNew(() =>
             {
@@ -307,7 +300,7 @@ namespace Dupples_finder_UI
                     Thread.CurrentThread.Priority = ThreadPriority.Lowest;
                     Thread.Sleep(1);
                     var a = info.Image;
-                    Dispatcher.BeginInvoke(new Func<bool>(() =>
+                    Dispatcher?.BeginInvoke(new Func<bool>(() =>
                     {
                         currentProgress += minProgressStep;
                         CalcProgress = currentProgress;
@@ -320,14 +313,14 @@ namespace Dupples_finder_UI
                 });
             }).ContinueWith(e =>
             {
-                Dispatcher.Invoke(MainWindow.Update);
-                Dispatcher.Invoke(() => IsLoaded = true);
+                Dispatcher?.Invoke(MainWindow.Update);
+                Dispatcher?.Invoke(() => IsLoaded = true);
             });
         }
 
         private void LoadCollectionDupesToMemory(IList<ImagePair> collection)
         {
-            Dispatcher.Invoke(() => IsLoaded = false);
+            Dispatcher?.Invoke(() => IsLoaded = false);
 
             Task.Factory.StartNew(() =>
             {
@@ -339,7 +332,7 @@ namespace Dupples_finder_UI
             }).ContinueWith(e =>
             {
                 //Dispatcher.Invoke(MainWindow.Update);
-                Dispatcher.Invoke(() => IsLoaded = true);
+                Dispatcher?.Invoke(() => IsLoaded = true);
             });
         }
 
@@ -366,17 +359,12 @@ namespace Dupples_finder_UI
             }
             return list;
         }
-
-        //public ImageInfo GetImageInfo(Image image)
-        //{
-        //    return DataCollection.FirstOrDefault(x => x.FilePath == (string)image.Tag);
-        //}
         
         #region SIFT Calculations
 
         public IEnumerable<Program.Result> CreateMatchCollection(IDictionary<string, MatOfFloat> hashes)
         {
-            Dispatcher.BeginInvoke(new Func<bool>(() => { IsProgrVisible = Visibility.Visible; return false; }));
+            Dispatcher?.BeginInvoke(new Func<bool>(() => { IsProgrVisible = Visibility.Visible; return false; }));
 
             var matchList = new ConcurrentBag<Program.Result>();
 
@@ -407,7 +395,7 @@ namespace Dupples_finder_UI
                         var linearFactors = CalcLinearFactors(hashArray, j1, i1);
                         matchList.Add(new Program.Result(hashArray[j1].Key, hashArray[i1].Key, linearFactors.Item1));
 
-                        Dispatcher.BeginInvoke(new Func<bool>(() =>
+                        Dispatcher?.BeginInvoke(new Func<bool>(() =>
                         {
                             currentProgress += minProgressStep;
                             CalcProgress = currentProgress;
@@ -565,7 +553,7 @@ namespace Dupples_finder_UI
                     info.Image.CopyPixels(buffer, stride, 0);
                     
                     // create bitmap
-                    Bitmap bitmap = new Bitmap(info.Image.PixelWidth, info.Image.PixelHeight, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                    Bitmap bitmap = new Bitmap(info.Image.PixelWidth, info.Image.PixelHeight, PixelFormat.Format32bppArgb);
 
                     // lock bitmap data
                     BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.WriteOnly, bitmap.PixelFormat);
@@ -605,7 +593,7 @@ namespace Dupples_finder_UI
                     sourceMat.Release();
 
                     currentProgress += minProgressStep;
-                    Dispatcher.BeginInvoke(new Func<bool>(() =>
+                    Dispatcher?.BeginInvoke(new Func<bool>(() =>
                     {
                         CalcProgress = currentProgress;
                         if (Abs(currentProgress - 100) < 0.1)
