@@ -23,6 +23,8 @@ namespace Dupples_finder_UI
             PairDataCollection = new List<ImagePair>();
             DataCollection = new List<ImageInfo>();
             StartMemoryAmountPublishing();
+
+            _calcOperations = new CalcOperations(Inst);
         }
         
         // ==================================================================================================================
@@ -47,9 +49,13 @@ namespace Dupples_finder_UI
 
         internal ConcurrentDictionary<string, MatOfFloat> _hashesDict;
         private IEnumerable<Result> _matches;
-        
+
         // ==================================================================================================================
-        
+
+        private readonly CalcOperations _calcOperations;
+
+        // ==================================================================================================================
+
         #region Injected
 
         public ushort ThumbnailSize { get; }
@@ -97,7 +103,7 @@ namespace Dupples_finder_UI
         public Visibility IsProgrVisible
         {
             get { return (Visibility)GetValue(IsProgrVisibleProperty); }
-            set { SetValue(IsProgrVisibleProperty, value); }
+            set { SetValue(IsProgrVisibleProperty, value);}
         }
 
         public double CalcProgress
@@ -188,7 +194,7 @@ namespace Dupples_finder_UI
                 Thread.CurrentThread.Priority = ThreadPriority.Highest;
 
                 CalcOperations.CalcSiftHashes(Inst, DataCollection)
-                    .ContinueWith(e1 => { _matches = CalcOperations.CreateMatchCollection(Inst, _hashesDict); })
+                    .ContinueWith(e1 => { _matches = _calcOperations.CreateMatchCollection(_hashesDict); })
                     .ContinueWith(e2 => { PopulateDupes(); });
             });
         }
@@ -201,6 +207,8 @@ namespace Dupples_finder_UI
         #region Methods
 
         private Timer _t;
+        
+
         private void StartMemoryAmountPublishing()
         {
             _t = new Timer(_ => Dispatcher?.BeginInvoke(new Func<long>(() =>
@@ -208,6 +216,16 @@ namespace Dupples_finder_UI
                 return AllocMem = Process.GetCurrentProcess().PrivateMemorySize64 / 1000000;
             })), null, 0, 300);
         }
+
+        //private Timer _tProg;
+        //private double Progress = 0;
+        //private void StartUpdateProgress()
+        //{
+        //    _tProg = new Timer(_ => Dispatcher?.BeginInvoke(new Func<double>(() =>
+        //    {
+        //        return CalcProgress = Progress;
+        //    })), null, 0, 300);
+        //}
 
         private void PopulateDupes()
         {
@@ -232,6 +250,8 @@ namespace Dupples_finder_UI
             {
                 _t.Dispose();
                 _t = null;
+                //_tProg.Dispose();
+                //_tProg = null;
             }
         }
 

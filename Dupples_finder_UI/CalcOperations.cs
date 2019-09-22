@@ -11,62 +11,73 @@ using OpenCvSharp.XFeatures2D;
 
 namespace Dupples_finder_UI
 {
-    internal static class CalcOperations
+    internal class CalcOperations
     {
-        public static IEnumerable<Result> CreateMatchCollection(MainViewModel mainViewModel, IDictionary<string, MatOfFloat> hashes)
+        private static MainViewModel _vm;
+
+        public CalcOperations(MainViewModel vm)
         {
-            mainViewModel.Dispatcher?.BeginInvoke(new Func<bool>(() =>
+            _vm = vm;
+        }
+
+        private static void EnablePublishingProgress()
+        {
+            _vm.Dispatcher?.BeginInvoke(new Func<bool>(() =>
             {
-                mainViewModel.IsProgrVisible = Visibility.Visible;
+                _vm.IsProgrVisible = Visibility.Visible;
                 return false;
             }));
+        }
 
+        private static void PublishProgress(int[] completedIterations, int[] iterations)
+        {
+            _vm.Dispatcher?.BeginInvoke(new Func<bool>(() =>
+            {
+                _vm.CalcProgress = 100.0 * completedIterations[0] / iterations[0];
+                return false;
+            }));
+        }
+
+        public IEnumerable<Result> CreateMatchCollection(IDictionary<string, MatOfFloat> hasheDict)
+        {
+            EnablePublishingProgress();
             var matchList = new ConcurrentBag<Result>();
 
-            var currentProgress = 0.0;
-            var minProgressStep = 100.0 / (hashes.Count / 2 * (hashes.Count - 1));
+            int[] iterations = {-1};
+            int[] completedIterations = {-1};
+
             var tasks = new List<Task>();
-            int completedIterations = 0;
-            var hashArray = hashes.ToArray();
-            for (var j = 0; j < hashArray.Length; j++)
+            var hashes = hasheDict.ToArray();
+            for (var j = 0; j < hashes.Length; j++)
             {
-                for (var i = j + 1; i < hashArray.Length; i++)
+                for (var i = j + 1; i < hashes.Length; i++)
                 {
-                    if (hashArray[j].Key == hashArray[i].Key)
+                    if (hashes[j].Key == hashes[i].Key)
                     {
                         continue;
                     }
                     //Thread.Sleep(1);
-                    Interlocked.Increment(ref completedIterations);
+                    
                     var i1 = i;
                     var j1 = j;
                     var task = new Task(() =>
                     {
                         Thread.CurrentThread.Priority = ThreadPriority.Lowest;
-                        //if (i1 % (hashArray.Length / 10 + 1) == 0)
-                        //{
-                        //    Console.WriteLine(@"Calculate matchpoint for " + i1 + @" and " + j1 + @" of " + hashArray.Length);
-                        //}
+ 
 
-                        var linearFactors = CalcLinearFactors(hashArray, j1, i1, out float[] matchPoints);
-                        matchList.Add(
-                            new Result(hashArray[j1].Key, hashArray[i1].Key, linearFactors.Item1, matchPoints));
+                        var linearFactors = CalcLinearFactors(hashes, j1, i1, out float[] matchPoints);
 
-                        mainViewModel.Dispatcher?.BeginInvoke(new Func<bool>(() =>
-                        {
-                            currentProgress += minProgressStep;
-                            mainViewModel.CalcProgress = currentProgress;
-                            if (Math.Abs(currentProgress - 100) < 0.1)
-                            {
-                                mainViewModel.IsProgrVisible = Visibility.Collapsed;
-                            }
-                            return false;
-                        }));
+                        matchList.Add(new Result(hashes[j1].Key, hashes[i1].Key, linearFactors.Item1, matchPoints));
+
+                        Interlocked.Increment(ref completedIterations[0]);
+                        PublishProgress(completedIterations, iterations);
                     });
 
                     tasks.Add(task);
                 }
             }
+            iterations[0] = tasks.Count;
+
             foreach (var t in tasks)
             {
                 t.Start();
