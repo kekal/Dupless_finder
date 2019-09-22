@@ -2,15 +2,12 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.Windows;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
+using System.Windows.Media.Imaging;
 using System.Threading;
 using System.Windows.Forms;
-using System.Windows.Media.Imaging;
 using System.Threading.Tasks;
 using Dupless_finder;
 using OpenCvSharp;
@@ -261,7 +258,7 @@ namespace Dupples_finder_UI
                 {
                     Image1 = DataCollection.FirstOrDefault(im => im.FilePath == match.Name1),
                     Image2 = DataCollection.FirstOrDefault(im => im.FilePath == match.Name2),
-                    Match = match.Match
+                    Match = match.Match,
                 }).ToList();
 
                 LoadCollectionDupesToMemory(temp);
@@ -392,7 +389,8 @@ namespace Dupples_finder_UI
                         //{
                         //    Console.WriteLine(@"Calculate matchpoint for " + i1 + @" and " + j1 + @" of " + hashArray.Length);
                         //}
-                        var linearFactors = CalcLinearFactors(hashArray, j1, i1);
+
+                        var linearFactors = CalcLinearFactors(hashArray, j1, i1 , out var matchPoints);
                         matchList.Add(new Program.Result(hashArray[j1].Key, hashArray[i1].Key, linearFactors.Item1));
 
                         Dispatcher?.BeginInvoke(new Func<bool>(() =>
@@ -415,37 +413,25 @@ namespace Dupples_finder_UI
             }
 
             Task.WaitAll(tasks.ToArray());
-            return matchList.OrderBy(o => Abs(o.Match));
+            return matchList.Where(o1 => o1.Match < 1000000).OrderBy(o => Abs(o.Match));
         }
 
-        private static Tuple<double, double> CalcLinearFactors(KeyValuePair<string, MatOfFloat>[] hashArray, int j, int i)
+        private static Tuple<double, double> CalcLinearFactors(KeyValuePair<string, MatOfFloat>[] hashArray, int j, int i, out float[] matchPoints)
         {
             Thread.CurrentThread.Priority = ThreadPriority.Lowest;
             var matcher = new BFMatcher(NormTypes.L2SQR, crossCheck: true);
-            var bfMatches = matcher.Match(hashArray[j].Value, hashArray[i].Value).OrderBy(o => o.Distance).Select(o => o.Distance).ToList();
+            var bfMatches = matcher.Match(hashArray[j].Value, hashArray[i].Value).OrderBy(o => o.Distance).Take(10).Select(o => o.Distance).ToList();
             matcher.Dispose();
 
-            float[] matches;
-            if (bfMatches.Count > 10)
-            {
-                matches = bfMatches.Take(bfMatches.Count / 2).ToArray();
-            }
-            else if (bfMatches.Count < 2)
-            {
-                matches = new[] {float.MaxValue, float.MaxValue};
-            }
-            else
-            {
-                matches = bfMatches.Take(bfMatches.Count).ToArray();
-            }
+            matchPoints = bfMatches.Count < 2 ? new[] {float.MaxValue, float.MaxValue} : bfMatches.ToArray();
 
             var xes = new List<double>();
             var yes = new List<double>();
 
-            for (int k = 0; k < matches.Length; k++)
+            for (int k = 0; k < matchPoints.Length; k++)
             {
                 xes.Add(k);
-                yes.Add(matches[k]);
+                yes.Add(matchPoints[k]);
             }
             
             var linearFactors = MathNet.Numerics.Fit.Line(xes.ToArray(), yes.ToArray());
@@ -544,31 +530,32 @@ namespace Dupples_finder_UI
                     Thread.CurrentThread.Priority = ThreadPriority.Lowest;
 
                     Thread.Sleep(1);
-                    
-                    var mem = new MemoryStream();
 
-                    // copy to byte array
-                    int stride = info.Image.PixelWidth * 4;
-                    byte[] buffer = new byte[stride * info.Image.PixelHeight];
-                    info.Image.CopyPixels(buffer, stride, 0);
-                    
-                    // create bitmap
-                    Bitmap bitmap = new Bitmap(info.Image.PixelWidth, info.Image.PixelHeight, PixelFormat.Format32bppArgb);
+                    //var mem = new MemoryStream();
 
-                    // lock bitmap data
-                    BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.WriteOnly, bitmap.PixelFormat);
+                    //// copy to byte array
+                    //int stride = ((BitmapImage)info.Image).PixelWidth * 4;
+                    //byte[] buffer = new byte[stride * ((BitmapImage)info.Image).PixelHeight];
+                    //((BitmapImage)info.Image).CopyPixels(buffer, stride, 0);
 
-                    // copy byte array to bitmap data
-                    Marshal.Copy(buffer, 0, bitmapData.Scan0, buffer.Length);
+                    //// create bitmap
+                    //Bitmap bitmap = new Bitmap(((BitmapImage)info.Image).PixelWidth, ((BitmapImage)info.Image).PixelHeight, PixelFormat.Format32bppArgb);
 
-                    // unlock
-                    bitmap.UnlockBits(bitmapData);
+                    //// lock bitmap data
+                    //BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.WriteOnly, bitmap.PixelFormat);
 
-                    bitmap.Save(mem,ImageFormat.Bmp);
+                    //// copy byte array to bitmap data
+                    //Marshal.Copy(buffer, 0, bitmapData.Scan0, buffer.Length);
+
+                    //// unlock
+                    //bitmap.UnlockBits(bitmapData);
+
+                    //bitmap.Save(mem,ImageFormat.Bmp);
 
 
-                    Mat sourceMat = Cv2.ImDecode(mem.GetBuffer(), ImreadModes.Unchanged);
-                    var resizedMat = sourceMat.Resize(new OpenCvSharp.Size(thumbSize, thumbSize), 0, 0, InterpolationFlags.Nearest);
+                    //Mat sourceMat = Cv2.ImDecode(mem.GetBuffer(), ImreadModes.Unchanged);
+
+                    //var resizedMat = sourceMat.Resize(new OpenCvSharp.Size(thumbSize, thumbSize), 0, 0, InterpolationFlags.Nearest);
 
                     //var scale = (double)thumbSize / Max(sourceMat.Width, sourceMat.Height);
                     //var resizedMat = sourceMat.Resize(new OpenCvSharp.Size(0, 0), scale, scale, InterpolationFlags.Nearest);
@@ -576,21 +563,26 @@ namespace Dupples_finder_UI
                     //var grayScaledMat = new Mat();
                     //Cv2.CvtColor(resizedMat, grayScaledMat, ColorConversionCodes.BGR2GRAY);
 
+                    //var siftPoints = SURF.Create(400);
                     var siftPoints = SIFT.Create();
 
                     var descriptors = new MatOfFloat();
 
-                    //var keypoints = sift.Detect(gray).Take(KEYPOINTS_NUMBER).ToArray();
-                    //sift.Compute(gray, ref keypoints, descriptors);
-                    siftPoints.DetectAndCompute(resizedMat, null, out KeyPoint[] keypoints, descriptors);
+                    //var keypoints = siftPoints.Detect(info.StoredMat).ToArray();
+                    //siftPoints.Compute(info.StoredMat, ref keypoints, descriptors);
+
+                    double scale = Math.Min(60.0 / info.StoredMat.Width, 60.0 / info.StoredMat.Height);
+                    Mat resized = info.StoredMat.Resize(new OpenCvSharp.Size(0, 0), scale, scale, InterpolationFlags.Area);
+                    siftPoints.DetectAndCompute(resized, null, out KeyPoint[] keypoints, descriptors);
+                    resized.Release();
 
                     _hashesDict.TryAdd(info.FilePath, descriptors);
 
                     //resizedMat?.Dispose();
                     siftPoints.Dispose();
                     //grayScaledMat.Dispose();
-                    resizedMat.Release();
-                    sourceMat.Release();
+                    //resizedMat.Release();
+                    //sourceMat.Release();
 
                     currentProgress += minProgressStep;
                     Dispatcher?.BeginInvoke(new Func<bool>(() =>

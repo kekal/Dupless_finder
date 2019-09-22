@@ -2,31 +2,34 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
+using System.Windows;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using OpenCvSharp;
+using Size = OpenCvSharp.Size;
 
 namespace Dupples_finder_UI
 {
-    public class ImagePair : DisposableObject
+    public class ImagePair : DependencyObject, IDisposable
     {
-        public double Match;
+
+        public double Match { get; set; }
+
 
         public ImageInfo Image1 { get; set; }
 
         public ImageInfo Image2 { get; set; }
 
+        public string MatchString => Match.ToString("F");
 
-        #region Disposing
 
-        protected override void Clean()
+        public void Dispose()
         {
             Image1.Dispose();
             Image2.Dispose();
             Image1 = null;
             Image2 = null;
         }
-
-        #endregion
     }
 
     // ==================================================================================================================
@@ -36,10 +39,26 @@ namespace Dupples_finder_UI
     {
         
         private static readonly Semaphore Sem = new Semaphore(Environment.ProcessorCount, Environment.ProcessorCount);
+        private static object Lock = new object();
         public string FilePath { get; set; }
 
-        private BitmapImage _image;
-        public BitmapImage Image
+        private ImageSource _image;
+        private Mat _storedMat;
+
+        public Mat StoredMat
+        {
+            get
+            {
+                if (_storedMat == null)
+                {
+                    StoreMat();
+                }
+                return _storedMat;
+            }
+            private set => _storedMat = value;
+        }
+
+        public ImageSource Image
         {
             get
             {
@@ -62,9 +81,8 @@ namespace Dupples_finder_UI
                     }
 
                     Trace.WriteLine($"     {Path.GetFileName(FilePath)} had been loaded from disk");
-                    _image = Laz.Value;
 
-                    return _image;
+                    return Laz.Value;
                 }
                 Trace.WriteLine($"     {Path.GetFileName(FilePath)} had been already loaded");
                 return _image;
@@ -76,7 +94,7 @@ namespace Dupples_finder_UI
             FilePath = path;
             Trace.WriteLine($"{Thread.CurrentThread.ManagedThreadId} started to load {Path.GetFileName(FilePath)}");
 
-            Laz = new Lazy<BitmapImage>(() => LoadImage(FilePath));
+            Laz = new Lazy<ImageSource>(() => LoadImage(FilePath));
             PrepareCommands();
         }
 
@@ -86,46 +104,78 @@ namespace Dupples_finder_UI
             ImageClick = new RelayCommand(() => Process.Start(FilePath));
         }
 
-        private Lazy<BitmapImage> Laz { get; set; }
+        private Lazy<ImageSource> Laz { get; set; }
 
-        private static BitmapImage LoadImage(string path)
+        private ImageSource LoadImage(string path)
         {
-            double decodeSize = MainViewModel.Inst.ThumbnailSize;
-
-            Sem.WaitOne();
-            var sourceMat = new Mat(path);
-            Sem.Release();
-            if (sourceMat.Width < 1 || sourceMat.Height < 1)
+            if (_storedMat == null || _image == null)
             {
-                sourceMat.Release();
-                sourceMat = Mat.Zeros(new Size(200, 200), MatType.CV_8UC3);
+                Sem.WaitOne();
+                StoreMat();
+                Sem.Release();
+            }
+
+            //BitmapImage reducedImage = new BitmapImage();
+            //reducedImage.BeginInit();
+
+            ImageSource reducedImage = OpenCvSharp.Extensions.BitmapSourceConverter.ToBitmapSource(StoredMat);
+
+
+            //MemoryStream dfg = StoredMat.ToMemoryStream(".jpg",
+            //    new ImageEncodingParam(ImwriteFlags.JpegQuality, 95),
+            //    new ImageEncodingParam(ImwriteFlags.JpegProgressive, 1),
+            //    new ImageEncodingParam(ImwriteFlags.JpegOptimize, 1));
+            //reducedImage.StreamSource = dfg;
+
+            //reducedImage.StreamSource = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            //reducedImage.DecodePixelHeight = MainViewModel.Inst.ThumbnailSize;
+            //reducedImage.CacheOption = BitmapCacheOption.None;
+            //reducedImage.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
+            //reducedImage.Rotation = Rotation.Rotate0;
+
+            //reducedImage.EndInit();
+            reducedImage.Freeze();
+
+            _image = reducedImage;
+            return _image;
+        }
+
+        private void StoreMat()
+        {
+            if (_storedMat != null)
+            {
+                return;
+            }
+
+            double decodeSize = MainViewModel.Inst.ThumbnailSize;
+            var sourceMat = new Mat(FilePath);
+
+            if (sourceMat?.Width < 1 || sourceMat?.Height < 1)
+            {
+                sourceMat?.Release();
+                lock (Lock)
+                {
+                    _storedMat?.Release();
+                    _storedMat = Mat.Zeros(new Size(decodeSize, decodeSize), MatType.CV_8UC3);
+                }
+
+                _image = new BitmapImage();
+                return;
             }
 
             var scale = Math.Min(decodeSize / sourceMat.Width, decodeSize / sourceMat.Height);
-            var resizedMat = sourceMat.Resize(new Size(0, 0), scale, scale, InterpolationFlags.Area);
+            var resized = sourceMat.Resize(new Size(0, 0), scale, scale, InterpolationFlags.Area);
 
-            var reducedImage = new BitmapImage();
-            reducedImage.BeginInit();
-            reducedImage.StreamSource = resizedMat.ToMemoryStream(".jpg",
-                new ImageEncodingParam(ImwriteFlags.JpegQuality, 95),
-                new ImageEncodingParam(ImwriteFlags.JpegProgressive, 1),
-                new ImageEncodingParam(ImwriteFlags.JpegOptimize, 1));
+            lock (Lock)
+            {
+                _storedMat?.Release();
+                _storedMat = resized;
+            }
 
-            //reducedImage.StreamSource = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-            reducedImage.DecodePixelHeight = MainViewModel.Inst.ThumbnailSize;
-            reducedImage.CacheOption = BitmapCacheOption.None;
-            reducedImage.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
-            reducedImage.Rotation = Rotation.Rotate0;
-
-            reducedImage.EndInit();
-            reducedImage.Freeze();
-
-            resizedMat.Release();
+            //resized.Release();
             sourceMat.Release();
-
-            return reducedImage;
         }
-        
+
         #region disposing
 
         protected override void Clean()
