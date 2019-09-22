@@ -11,119 +11,78 @@ using OpenCvSharp.XFeatures2D;
 
 namespace Dupples_finder_UI
 {
-    internal class CalcOperations
+    internal class OperationsWithProgress
     {
         private static MainViewModel _vm;
 
-        public CalcOperations(MainViewModel vm)
+        protected int[] Iterations;
+        protected int[] CompletedIterations;
+
+        public OperationsWithProgress(MainViewModel vm)
         {
             _vm = vm;
         }
 
-        private static void EnablePublishingProgress()
+        protected void EnablePublishingProgress()
         {
+            Iterations = new[] { -1 };
+            CompletedIterations = new[] { -1 };
             _vm.Dispatcher?.BeginInvoke(new Func<bool>(() =>
             {
+                _vm.CalcProgress = 0;
                 _vm.IsProgrVisible = Visibility.Visible;
                 return false;
             }));
+            Thread.Sleep(1);
         }
 
-        private static void PublishProgress(int[] completedIterations, int[] iterations)
+        protected static void DisiblePublishingProgress()
         {
             _vm.Dispatcher?.BeginInvoke(new Func<bool>(() =>
             {
-                _vm.CalcProgress = 100.0 * completedIterations[0] / iterations[0];
+                _vm.IsProgrVisible = Visibility.Collapsed;
                 return false;
             }));
+            Thread.Sleep(1);
         }
 
-        public IEnumerable<Result> CreateMatchCollection(IDictionary<string, MatOfFloat> hasheDict)
+        protected void UpdateIterationsCount()
         {
-            EnablePublishingProgress();
-            var matchList = new ConcurrentBag<Result>();
+            Interlocked.Increment(ref CompletedIterations[0]);
+            PublishProgress();
+        }
 
-            int[] iterations = {-1};
-            int[] completedIterations = {-1};
+        protected void SetProgressIterationsScope(List<Task> elements)
+        {
+            Iterations[0] = elements.Count;
+        }
 
-            var tasks = new List<Task>();
-            var hashes = hasheDict.ToArray();
-            for (var j = 0; j < hashes.Length; j++)
+        private void PublishProgress()
+        {
+            _vm.Dispatcher?.BeginInvoke(new Func<bool>(() =>
             {
-                for (var i = j + 1; i < hashes.Length; i++)
+                var progress = 100.0 * CompletedIterations[0] / Iterations[0];
+                if (progress - _vm.CalcProgress > 0.1 )
                 {
-                    if (hashes[j].Key == hashes[i].Key)
-                    {
-                        continue;
-                    }
-                    //Thread.Sleep(1);
-                    
-                    var i1 = i;
-                    var j1 = j;
-                    var task = new Task(() =>
-                    {
-                        Thread.CurrentThread.Priority = ThreadPriority.Lowest;
- 
-
-                        var linearFactors = CalcLinearFactors(hashes, j1, i1, out float[] matchPoints);
-
-                        matchList.Add(new Result(hashes[j1].Key, hashes[i1].Key, linearFactors.Item1, matchPoints));
-
-                        Interlocked.Increment(ref completedIterations[0]);
-                        PublishProgress(completedIterations, iterations);
-                    });
-
-                    tasks.Add(task);
+                    _vm.CalcProgress = progress;
                 }
-            }
-            iterations[0] = tasks.Count;
-
-            foreach (var t in tasks)
-            {
-                t.Start();
-            }
-
-            Task.WaitAll(tasks.ToArray());
-            return matchList.Where(o1 => o1.Match < 1000000).OrderBy(o => Math.Abs(o.Match));
+                return false;
+            }));
+            Thread.Sleep(1);
         }
+    }
 
-        private static Tuple<double, double> CalcLinearFactors(KeyValuePair<string, MatOfFloat>[] hashArray, int j, int i, out float[] matchPoints)
-        {
-            Thread.CurrentThread.Priority = ThreadPriority.Lowest;
-            var matcher = new BFMatcher(NormTypes.L2SQR, crossCheck: true);
-            var bfMatches = matcher.Match(hashArray[j].Value, hashArray[i].Value).OrderBy(o => o.Distance).Take(10).Select(o => o.Distance).ToList();
-            matcher.Dispose();
+    internal class CalcOperations : OperationsWithProgress
+    {
+        public CalcOperations(MainViewModel vm) : base(vm) {}
 
-            matchPoints = bfMatches.Count < 2 ? new[] {Single.MaxValue, Single.MaxValue} : bfMatches.ToArray();
-
-            var xes = new List<double>();
-            var yes = new List<double>();
-
-            for (int k = 0; k < matchPoints.Length; k++)
-            {
-                xes.Add(k);
-                yes.Add(matchPoints[k]);
-            }
-
-            var linearFactors = MathNet.Numerics.Fit.Line(xes.ToArray(), yes.ToArray());
-            return linearFactors;
-        }
-
-        public static Task CalcSiftHashes(MainViewModel mainViewModel, IEnumerable<ImageInfo> infos, int thumbSize = 100)
+        public ConcurrentDictionary<string, MatOfFloat> CalcSiftHashes(IEnumerable<ImageInfo> infos, out Task result, int thumbSize = 100)
         {
             Trace.WriteLine($"CalcSiftHashes started");
-            var currentProgress = 0.0;
-            var minProgressStep = 100.0 / infos.Count();
 
-            if (mainViewModel._hashesDict?.Values != null)
-            {
-                foreach (var mat in mainViewModel._hashesDict.Values)
-                {
-                    mat?.Release();
-                }
-            }
+            EnablePublishingProgress();
 
-            mainViewModel._hashesDict = new ConcurrentDictionary<string, MatOfFloat>();
+            var hashesDict = new ConcurrentDictionary<string, MatOfFloat>();
 
             var tasks = new List<Task>();
             foreach (ImageInfo info in infos)
@@ -167,46 +126,113 @@ namespace Dupples_finder_UI
                     //Cv2.CvtColor(resizedMat, grayScaledMat, ColorConversionCodes.BGR2GRAY);
 
                     //var siftPoints = SURF.Create(400);
-                    var siftPoints = SIFT.Create();
+                    SIFT siftPoints = SIFT.Create();
 
                     var descriptors = new MatOfFloat();
 
                     //var keypoints = siftPoints.Detect(info.StoredMat).ToArray();
                     //siftPoints.Compute(info.StoredMat, ref keypoints, descriptors);
 
-                    double scale = Math.Min(60.0 / info.StoredMat.Width, 60.0 / info.StoredMat.Height);
-                    Mat resized = info.StoredMat.Resize(new OpenCvSharp.Size(0, 0), scale, scale,
-                        InterpolationFlags.Area);
+                    double scale = Math.Min((float) thumbSize / info.StoredMat.Width, (float) thumbSize / info.StoredMat.Height);
+                    Mat resized = info.StoredMat.Resize(new OpenCvSharp.Size(0, 0), scale, scale, InterpolationFlags.Area);
                     siftPoints.DetectAndCompute(resized, null, out KeyPoint[] keypoints, descriptors);
                     resized.Release();
 
-                    mainViewModel._hashesDict.TryAdd(info.FilePath, descriptors);
+                    hashesDict.TryAdd(info.FilePath, descriptors);
 
                     //resizedMat?.Dispose();
                     siftPoints.Dispose();
                     //grayScaledMat.Dispose();
                     //resizedMat.Release();
                     //sourceMat.Release();
-
-                    currentProgress += minProgressStep;
-                    mainViewModel.Dispatcher?.BeginInvoke(new Func<bool>(() =>
-                    {
-                        mainViewModel.CalcProgress = currentProgress;
-                        if (Math.Abs(currentProgress - 100) < 0.1)
-                        {
-                            mainViewModel.IsProgrVisible = Visibility.Collapsed;
-                        }
-                        return false;
-                    }));
+                    UpdateIterationsCount();
                 });
 
                 tasks.Add(task);
             }
+
+            SetProgressIterationsScope(tasks);
+
             foreach (var task in tasks)
             {
                 task.Start();
             }
-            return Task.WhenAll(tasks.ToArray());
+
+            result = Task.WhenAll(tasks.ToArray());
+            result.ContinueWith(o => DisiblePublishingProgress());
+
+            
+
+            return hashesDict;
+        }
+
+        public IEnumerable<Result> CreateMatchCollection(IDictionary<string, MatOfFloat> hasheDict)
+        {
+            EnablePublishingProgress();
+            var matchList = new ConcurrentBag<Result>();
+
+            var tasks = new List<Task>();
+            var hashes = hasheDict.ToArray();
+
+            for (var j = 0; j < hashes.Length; j++)
+            {
+                for (var i = j + 1; i < hashes.Length; i++)
+                {
+                    if (hashes[j].Key == hashes[i].Key)
+                    {
+                        continue;
+                    }
+                    //Thread.Sleep(1);
+
+                    var i1 = i;
+                    var j1 = j;
+                    var task = new Task(() =>
+                    {
+                        Thread.CurrentThread.Priority = ThreadPriority.Lowest;
+
+                        var linearFactors = CalcLinearFactors(hashes, j1, i1, out float[] matchPoints);
+
+                        matchList.Add(new Result(hashes[j1].Key, hashes[i1].Key, linearFactors.Item1, matchPoints));
+
+                        UpdateIterationsCount();
+                    });
+
+                    tasks.Add(task);
+                }
+            }
+            SetProgressIterationsScope(tasks);
+
+            foreach (var t in tasks)
+            {
+                t.Start();
+            }
+
+            Task.WaitAll(tasks.ToArray());
+
+            DisiblePublishingProgress();
+            return matchList.Where(o1 => o1.Match < 1000000).OrderBy(o => Math.Abs(o.Match));
+        }
+
+        private static Tuple<double, double> CalcLinearFactors(KeyValuePair<string, MatOfFloat>[] hashArray, int j, int i, out float[] matchPoints)
+        {
+            Thread.CurrentThread.Priority = ThreadPriority.Lowest;
+            var matcher = new BFMatcher(NormTypes.L2SQR, crossCheck: true);
+            var bfMatches = matcher.Match(hashArray[j].Value, hashArray[i].Value).OrderBy(o => o.Distance).Take(10).Select(o => o.Distance).ToList();
+            matcher.Dispose();
+
+            matchPoints = bfMatches.Count < 2 ? new[] { Single.MaxValue, Single.MaxValue } : bfMatches.ToArray();
+
+            var xes = new List<double>();
+            var yes = new List<double>();
+
+            for (int k = 0; k < matchPoints.Length; k++)
+            {
+                xes.Add(k);
+                yes.Add(matchPoints[k]);
+            }
+
+            var linearFactors = MathNet.Numerics.Fit.Line(xes.ToArray(), yes.ToArray());
+            return linearFactors;
         }
     }
 }

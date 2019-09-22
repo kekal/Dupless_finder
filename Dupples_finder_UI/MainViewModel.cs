@@ -6,6 +6,7 @@ using System.Windows;
 using System.Linq;
 using System.Windows.Media.Imaging;
 using System.Threading;
+using System.Threading.Tasks;
 using OpenCvSharp;
 using Timer = System.Threading.Timer;
 
@@ -38,6 +39,7 @@ namespace Dupples_finder_UI
         public static readonly DependencyProperty ImageProperty = DependencyProperty.Register("Image", typeof(object), typeof(MainViewModel), new PropertyMetadata(default(BitmapImage)));
         public static readonly DependencyProperty IsLoadedProperty = DependencyProperty.Register("IsLoaded", typeof(bool), typeof(MainViewModel), new PropertyMetadata(default(bool)));
         public static readonly DependencyProperty CalcProgressProperty = DependencyProperty.Register("CalcProgress", typeof(double), typeof(MainViewModel), new PropertyMetadata(default(double)));
+        public static readonly DependencyProperty CalcProgressTextProperty = DependencyProperty.Register("CalcProgressText", typeof(string), typeof(MainViewModel), new PropertyMetadata(default(string)));
         public static readonly DependencyProperty AllocMemProperty = DependencyProperty.Register("AllocMem", typeof(long), typeof(MainViewModel), new PropertyMetadata(default(long)));
         public static readonly DependencyProperty IsProgrVisibleProperty = DependencyProperty.Register("IsProgrVisible", typeof(Visibility), typeof(MainViewModel), new PropertyMetadata(Visibility.Collapsed));
 
@@ -109,7 +111,17 @@ namespace Dupples_finder_UI
         public double CalcProgress
         {
             get { return (double)GetValue(CalcProgressProperty); }
-            set { SetValue(CalcProgressProperty, value); }
+            set
+            {
+                CalcProgressText = value.ToString("F1") + '%';
+                SetValue(CalcProgressProperty, value);
+            }
+        }
+
+        public string CalcProgressText
+        {
+            get => (string)GetValue(CalcProgressTextProperty);
+            set => SetValue(CalcProgressTextProperty, value);
         }
 
         public long AllocMem
@@ -128,6 +140,8 @@ namespace Dupples_finder_UI
         public RelayCommand CreateHashes { get; private set; }
         public RelayCommand LoadTemplateCollection { get; private set; }
         public RelayCommand CreateHashesFromCollection { get; private set; }
+
+
 
         private void PrepareCommands()
         {
@@ -190,15 +204,26 @@ namespace Dupples_finder_UI
 
             CreateHashesFromCollection = new RelayCommand(() =>
             {
-                IsProgrVisible = Visibility.Visible;
+                //IsProgrVisible = Visibility.Visible;
                 Thread.CurrentThread.Priority = ThreadPriority.Highest;
 
-                CalcOperations.CalcSiftHashes(Inst, DataCollection)
-                    .ContinueWith(e1 => { _matches = _calcOperations.CreateMatchCollection(_hashesDict); })
-                    .ContinueWith(e2 => { PopulateDupes(); });
+                ClearCollectionCache();
+                var hashesDict = _calcOperations.CalcSiftHashes(DataCollection, out Task result);
+                result.ContinueWith(e1 => _matches = _calcOperations.CreateMatchCollection(hashesDict).Distinct())
+                      .ContinueWith(e2 => { PopulateDupes(); });
             });
         }
 
+        private void ClearCollectionCache()
+        {
+            if (_hashesDict != null)
+            {
+                foreach (var mat in _hashesDict.Values)
+                {
+                    mat?.Release();
+                }
+            }
+        }
 
         #endregion
 
@@ -207,7 +232,7 @@ namespace Dupples_finder_UI
         #region Methods
 
         private Timer _t;
-        
+
 
         private void StartMemoryAmountPublishing()
         {
