@@ -40,7 +40,7 @@
                     <materialIcons:MaterialIcon Icon="ic_trending_up"/>
                 </CheckBox>-->
                 <Label Content="{Binding AllocMem}" />
-                <ProgressBar Value="{Binding CalcProgress}" Width="200" Visibility="{Binding IsProgrVisible}"/>
+                <ProgressBar Value="{Binding CalcProgress}" Width="200" Visibility="{Binding IsProgrVisible}" ToolTip="{Binding Value, RelativeSource={RelativeSource Self}}"/>
             </ToolBar>
         </ToolBarTray>
 
@@ -54,7 +54,7 @@
                   VirtualizingPanel.IsContainerVirtualizable="True" 
         
         -->
-        <DataGrid x:Name="Table1" Grid.Row="1" RowHeight="{Binding ThumbnailSize}" ItemsSource="{Binding PairDataCollection}" CanUserAddRows="False"  CellStyle="{StaticResource ImageCellStyle}" AutoGenerateColumns="False" HeadersVisibility="None" GridLinesVisibility="Horizontal" 
+        <DataGrid Grid.Row="1" RowHeight="{Binding ThumbnailSize}" ItemsSource="{Binding PairDataCollection}" CanUserAddRows="False"  CellStyle="{StaticResource ImageCellStyle}" AutoGenerateColumns="False" HeadersVisibility="None" GridLinesVisibility="Horizontal" 
 
                   ScrollViewer.CanContentScroll="True" 
                   VirtualizingPanel.ScrollUnit="Pixel" 
@@ -89,6 +89,9 @@
                                     </Button.InputBindings>
                                     <Image Source="{Binding Image1.Image, BindsDirectlyToSource=True, IsAsync=True, Mode=OneWay}" Tag="{Binding Image1.FilePath}" Height="{Binding RowHeight, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type DataGrid}}}" />
                                 </Button>
+                                <StackPanel Grid.Column="1" MinWidth="20">
+                                    <Label Content="{Binding MatchString}" />
+                                </StackPanel>
                                 <Button  Grid.Column="2">
                                     <Button.InputBindings>
                                         <MouseBinding Command="{Binding Image2.ImageClick}" Gesture="LeftDoubleClick" />

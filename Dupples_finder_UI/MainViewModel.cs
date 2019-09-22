@@ -3,16 +3,10 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Windows;
-using System.IO;
 using System.Linq;
 using System.Windows.Media.Imaging;
 using System.Threading;
-using System.Windows.Forms;
-using System.Threading.Tasks;
-using Dupless_finder;
 using OpenCvSharp;
-using OpenCvSharp.XFeatures2D;
-using static System.Math;
 using Timer = System.Threading.Timer;
 
 namespace Dupples_finder_UI
@@ -49,23 +43,10 @@ namespace Dupples_finder_UI
 
         // ==================================================================================================================
 
-        #region Events
-
-        //public event EventHandler<long> MemoryDisplayEvent;
-        //public virtual void OnMemoryDisplayEvent(long alloc)
-        //{
-        //    MemoryDisplayEvent?.Invoke(this, alloc);
-        //} 
-
-        #endregion
-
-        // ==================================================================================================================
-
         #region Fields
 
-
-        private ConcurrentDictionary<string, MatOfFloat> _hashesDict;
-        private IEnumerable<Program.Result> _matches;
+        internal ConcurrentDictionary<string, MatOfFloat> _hashesDict;
+        private IEnumerable<Result> _matches;
         
         // ==================================================================================================================
         
@@ -146,7 +127,7 @@ namespace Dupples_finder_UI
         {
             LoadCommad = new RelayCommand(() =>
             {
-                if (!GetAllPathes(out var pathes, string.Empty))
+                if (!LoadingOperations.GetAllPathes(out var pathes, string.Empty))
                 {
                     return;
                 }
@@ -169,7 +150,7 @@ namespace Dupples_finder_UI
             LoadTemplateCollection = new RelayCommand(() =>
             {
                 IList<ImagePair> colle = new List<ImagePair>();
-                if (!GetAllPathes(out var pathes, ""/*@"C:\Users\Main\Desktop\cosplay\MasyuTaitu"*/))
+                if (!LoadingOperations.GetAllPathes(out var pathes, ""/*@"C:\Users\Main\Desktop\cosplay\MasyuTaitu"*/))
                 {
                     return;
                 }
@@ -198,7 +179,7 @@ namespace Dupples_finder_UI
                 }
                 PairDataCollection = colle;
 
-                LoadCollectionToMemory(DataCollection);
+                LoadingOperations.LoadCollectionToMemory(Inst, DataCollection);
             });
 
             CreateHashesFromCollection = new RelayCommand(() =>
@@ -206,8 +187,8 @@ namespace Dupples_finder_UI
                 IsProgrVisible = Visibility.Visible;
                 Thread.CurrentThread.Priority = ThreadPriority.Highest;
 
-                CalcSiftHashes(DataCollection)
-                    .ContinueWith(e1 => { _matches = CreateMatchCollection(_hashesDict); })
+                CalcOperations.CalcSiftHashes(Inst, DataCollection)
+                    .ContinueWith(e1 => { _matches = CalcOperations.CreateMatchCollection(Inst, _hashesDict); })
                     .ContinueWith(e2 => { PopulateDupes(); });
             });
         }
@@ -218,28 +199,6 @@ namespace Dupples_finder_UI
         // ==================================================================================================================
 
         #region Methods
-
-        private static bool GetAllPathes(out IEnumerable<string> pathes, string rootFolder)
-        {
-            if (rootFolder == string.Empty)
-            {
-                using (var fbd = new FolderBrowserDialogEx())
-                {
-                    fbd.ShowNewFolderButton = false;
-                    var result = fbd.ShowDialog();
-                    rootFolder = fbd.SelectedPath;
-                    if (result != DialogResult.OK || string.IsNullOrWhiteSpace(rootFolder))
-                    {
-                        pathes = null;
-                        return false;
-                    }
-                }
-            }
-
-            pathes = DirSearch(rootFolder, ".jpg", ".png");
-
-            return true;
-        }
 
         private Timer _t;
         private void StartMemoryAmountPublishing()
@@ -259,350 +218,12 @@ namespace Dupples_finder_UI
                     Image1 = DataCollection.FirstOrDefault(im => im.FilePath == match.Name1),
                     Image2 = DataCollection.FirstOrDefault(im => im.FilePath == match.Name2),
                     Match = match.Match,
+                    MatchPoints = match.MatchPoints
                 }).ToList();
 
-                LoadCollectionDupesToMemory(temp);
+                LoadingOperations.LoadCollectionDupesToMemory(Inst, temp);
                 PairDataCollection = temp;
             });
-        }
-
-        private void LoadCollectionToMemory(IList<ImageInfo> collection)
-        {
-            Dispatcher?.Invoke(() => IsLoaded = false);
-            IsProgrVisible = Visibility.Visible;
-            Task.Factory.StartNew(() =>
-            {
-       
-                Thread.CurrentThread.Priority = ThreadPriority.Lowest;
-                double currentProgress = 0.0;
-                double minProgressStep = 100.0 / collection.Count;
-
-                //foreach (var info in collection)
-                //{
-                //    Thread.Sleep(1);
-                //    var a = info.Image;
-                //    Dispatcher.BeginInvoke(new Func<bool>(() =>
-                //    {
-                //        currentProgress += minProgressStep;
-                //        CalcProgress = currentProgress;
-                //        if (Abs(currentProgress - 100) < 0.1)
-                //        {
-                //            IsProgrVisible = Visibility.Collapsed;
-                //        }
-                //        return false;
-                //    }));
-                //}
-                Parallel.ForEach(collection, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount - 1 }, info =>
-                {
-                    Thread.CurrentThread.Priority = ThreadPriority.Lowest;
-                    Thread.Sleep(1);
-                    var a = info.Image;
-                    Dispatcher?.BeginInvoke(new Func<bool>(() =>
-                    {
-                        currentProgress += minProgressStep;
-                        CalcProgress = currentProgress;
-                        if (Abs(currentProgress - 100) < 0.1)
-                        {
-                            IsProgrVisible = Visibility.Collapsed;
-                        }
-                        return false;
-                    }));
-                });
-            }).ContinueWith(e =>
-            {
-                Dispatcher?.Invoke(MainWindow.Update);
-                Dispatcher?.Invoke(() => IsLoaded = true);
-            });
-        }
-
-        private void LoadCollectionDupesToMemory(IList<ImagePair> collection)
-        {
-            Dispatcher?.Invoke(() => IsLoaded = false);
-
-            Task.Factory.StartNew(() =>
-            {
-                foreach (var pair in collection)
-                {
-                    var a = pair.Image1;
-                    var b = pair.Image2;
-                }
-            }).ContinueWith(e =>
-            {
-                //Dispatcher.Invoke(MainWindow.Update);
-                Dispatcher?.Invoke(() => IsLoaded = true);
-            });
-        }
-
-        static IEnumerable<string> DirSearch(string sDir, params string[] types)
-        {
-            var list = new List<string>();
-            try
-            {
-                foreach (string f in Directory.GetFiles(sDir))
-                {
-                    if (types.Any(o => o.Equals(Path.GetExtension(f))))
-                    {
-                        list.Add(f);
-                    }
-                }
-                foreach (string d in Directory.GetDirectories(sDir))
-                {
-                    list.AddRange(DirSearch(d, types));
-                }
-            }
-            catch (Exception excpt)
-            {
-                Console.WriteLine(excpt.Message);
-            }
-            return list;
-        }
-        
-        #region SIFT Calculations
-
-        public IEnumerable<Program.Result> CreateMatchCollection(IDictionary<string, MatOfFloat> hashes)
-        {
-            Dispatcher?.BeginInvoke(new Func<bool>(() => { IsProgrVisible = Visibility.Visible; return false; }));
-
-            var matchList = new ConcurrentBag<Program.Result>();
-
-            var currentProgress = 0.0;
-            var minProgressStep = 100.0 / (hashes.Count /2 * (hashes.Count - 1));
-            var tasks = new List<Task>();
-            int completedIterations = 0;
-            var hashArray = hashes.ToArray();
-            for (var j = 0; j < hashArray.Length; j++)
-            {
-                for (var i = j + 1; i < hashArray.Length; i++)
-                {
-                    if (hashArray[j].Key == hashArray[i].Key)
-                    {
-                        continue;
-                    }
-                    //Thread.Sleep(1);
-                    Interlocked.Increment(ref completedIterations);
-                    var i1 = i;
-                    var j1 = j;
-                    var task = new Task(() =>
-                    {
-                        Thread.CurrentThread.Priority = ThreadPriority.Lowest;
-                        //if (i1 % (hashArray.Length / 10 + 1) == 0)
-                        //{
-                        //    Console.WriteLine(@"Calculate matchpoint for " + i1 + @" and " + j1 + @" of " + hashArray.Length);
-                        //}
-
-                        var linearFactors = CalcLinearFactors(hashArray, j1, i1 , out var matchPoints);
-                        matchList.Add(new Program.Result(hashArray[j1].Key, hashArray[i1].Key, linearFactors.Item1));
-
-                        Dispatcher?.BeginInvoke(new Func<bool>(() =>
-                        {
-                            currentProgress += minProgressStep;
-                            CalcProgress = currentProgress;
-                            if (Abs(currentProgress - 100) < 0.1)
-                            {
-                                IsProgrVisible = Visibility.Collapsed;
-                            }
-                            return false;
-                        }));
-                    });
-
-                    tasks.Add(task);
-                }
-            }
-            foreach (var t in tasks)       {
-                t.Start();
-            }
-
-            Task.WaitAll(tasks.ToArray());
-            return matchList.Where(o1 => o1.Match < 1000000).OrderBy(o => Abs(o.Match));
-        }
-
-        private static Tuple<double, double> CalcLinearFactors(KeyValuePair<string, MatOfFloat>[] hashArray, int j, int i, out float[] matchPoints)
-        {
-            Thread.CurrentThread.Priority = ThreadPriority.Lowest;
-            var matcher = new BFMatcher(NormTypes.L2SQR, crossCheck: true);
-            var bfMatches = matcher.Match(hashArray[j].Value, hashArray[i].Value).OrderBy(o => o.Distance).Take(10).Select(o => o.Distance).ToList();
-            matcher.Dispose();
-
-            matchPoints = bfMatches.Count < 2 ? new[] {float.MaxValue, float.MaxValue} : bfMatches.ToArray();
-
-            var xes = new List<double>();
-            var yes = new List<double>();
-
-            for (int k = 0; k < matchPoints.Length; k++)
-            {
-                xes.Add(k);
-                yes.Add(matchPoints[k]);
-            }
-            
-            var linearFactors = MathNet.Numerics.Fit.Line(xes.ToArray(), yes.ToArray());
-            return linearFactors;
-        }
-
-        //private Task CalcSiftHashes(IEnumerable<string> paths, int thumbSize = 100)
-        //{
-        //    var currentProgress = 0.0;
-        //    var minProgressStep = 100.0 / paths.Count();
-
-        //    if (_hashesDict?.Values != null)
-        //    {
-        //        foreach (var mat in _hashesDict.Values)
-        //        {
-        //            mat?.Dispose();
-        //        }
-        //    }
-
-        //    _hashesDict = new ConcurrentDictionary<string, MatOfFloat>();
-
-        //    var tasks = new List<Task>();
-        //    foreach (var path in paths)
-        //    {
-        //        var task = new Task(() =>
-        //        {
-        //            Thread.CurrentThread.Priority = ThreadPriority.Lowest;
-        //            Thread.Sleep(1000);
-        //            Mat sourceMat = new Mat(path, ImreadModes.GrayScale);
-        //            var resizedMat = sourceMat.Resize(new OpenCvSharp.Size(thumbSize, thumbSize), 0, 0, InterpolationFlags.Nearest);
-
-        //            //var scale = (double)thumbSize / Max(sourceMat.Width, sourceMat.Height);
-        //            //var resizedMat = sourceMat.Resize(new OpenCvSharp.Size(0, 0), scale, scale, InterpolationFlags.Nearest);
-
-        //            //var grayScaledMat = new Mat();
-        //            //Cv2.CvtColor(resizedMat, grayScaledMat, ColorConversionCodes.BGR2GRAY);
-
-        //            SIFT siftPoints = SIFT.Create();
-
-        //            var descriptors = new MatOfFloat();
-
-        //            //var keypoints = sift.Detect(gray).Take(KEYPOINTS_NUMBER).ToArray();
-        //            //sift.Compute(gray, ref keypoints, descriptors);
-        //            siftPoints.DetectAndCompute(resizedMat, null, out KeyPoint[] keypoints, descriptors);
-
-        //            _hashesDict.TryAdd(path, descriptors);
-
-        //            //resizedMat?.Dispose();
-        //            siftPoints.Dispose();
-        //            //grayScaledMat.Dispose();
-        //            resizedMat.Release();
-        //            sourceMat.Release();
-
-        //            currentProgress += minProgressStep;
-        //            Dispatcher.BeginInvoke(new Func<bool>(() =>
-        //            {
-        //                CalcProgress = currentProgress;
-        //                if (Abs(currentProgress - 100) < 0.1)
-        //                {
-        //                    IsProgrVisible = Visibility.Collapsed;
-        //                }
-        //                return false;
-        //            }));
-        //        });
-
-        //        tasks.Add(task);
-        //    }
-        //    foreach (var task in tasks)
-        //    {
-        //        task.Start();
-        //    }
-        //    return Task.WhenAll(tasks.ToArray());
-        //}
-
-        private Task CalcSiftHashes(IEnumerable<ImageInfo> infos, int thumbSize = 100)
-        {
-            Trace.WriteLine($"CalcSiftHashes started");
-            var currentProgress = 0.0;
-            var minProgressStep = 100.0 / infos.Count();
-
-            if (_hashesDict?.Values != null)
-            {
-                foreach (var mat in _hashesDict.Values)
-                {
-                    mat?.Release();
-                }
-            }
-
-            _hashesDict = new ConcurrentDictionary<string, MatOfFloat>();
-
-            var tasks = new List<Task>();
-            foreach (ImageInfo info in infos)
-            {
-                var task = new Task(() =>
-                {
-                    Thread.CurrentThread.Priority = ThreadPriority.Lowest;
-
-                    Thread.Sleep(1);
-
-                    //var mem = new MemoryStream();
-
-                    //// copy to byte array
-                    //int stride = ((BitmapImage)info.Image).PixelWidth * 4;
-                    //byte[] buffer = new byte[stride * ((BitmapImage)info.Image).PixelHeight];
-                    //((BitmapImage)info.Image).CopyPixels(buffer, stride, 0);
-
-                    //// create bitmap
-                    //Bitmap bitmap = new Bitmap(((BitmapImage)info.Image).PixelWidth, ((BitmapImage)info.Image).PixelHeight, PixelFormat.Format32bppArgb);
-
-                    //// lock bitmap data
-                    //BitmapData bitmapData = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.WriteOnly, bitmap.PixelFormat);
-
-                    //// copy byte array to bitmap data
-                    //Marshal.Copy(buffer, 0, bitmapData.Scan0, buffer.Length);
-
-                    //// unlock
-                    //bitmap.UnlockBits(bitmapData);
-
-                    //bitmap.Save(mem,ImageFormat.Bmp);
-
-
-                    //Mat sourceMat = Cv2.ImDecode(mem.GetBuffer(), ImreadModes.Unchanged);
-
-                    //var resizedMat = sourceMat.Resize(new OpenCvSharp.Size(thumbSize, thumbSize), 0, 0, InterpolationFlags.Nearest);
-
-                    //var scale = (double)thumbSize / Max(sourceMat.Width, sourceMat.Height);
-                    //var resizedMat = sourceMat.Resize(new OpenCvSharp.Size(0, 0), scale, scale, InterpolationFlags.Nearest);
-
-                    //var grayScaledMat = new Mat();
-                    //Cv2.CvtColor(resizedMat, grayScaledMat, ColorConversionCodes.BGR2GRAY);
-
-                    //var siftPoints = SURF.Create(400);
-                    var siftPoints = SIFT.Create();
-
-                    var descriptors = new MatOfFloat();
-
-                    //var keypoints = siftPoints.Detect(info.StoredMat).ToArray();
-                    //siftPoints.Compute(info.StoredMat, ref keypoints, descriptors);
-
-                    double scale = Math.Min(60.0 / info.StoredMat.Width, 60.0 / info.StoredMat.Height);
-                    Mat resized = info.StoredMat.Resize(new OpenCvSharp.Size(0, 0), scale, scale, InterpolationFlags.Area);
-                    siftPoints.DetectAndCompute(resized, null, out KeyPoint[] keypoints, descriptors);
-                    resized.Release();
-
-                    _hashesDict.TryAdd(info.FilePath, descriptors);
-
-                    //resizedMat?.Dispose();
-                    siftPoints.Dispose();
-                    //grayScaledMat.Dispose();
-                    //resizedMat.Release();
-                    //sourceMat.Release();
-
-                    currentProgress += minProgressStep;
-                    Dispatcher?.BeginInvoke(new Func<bool>(() =>
-                    {
-                        CalcProgress = currentProgress;
-                        if (Abs(currentProgress - 100) < 0.1)
-                        {
-                            IsProgrVisible = Visibility.Collapsed;
-                        }
-                        return false;
-                    }));
-                });
-
-                tasks.Add(task);
-            }
-            foreach (var task in tasks)
-            {
-                task.Start();
-            }
-            return Task.WhenAll(tasks.ToArray());
         }
 
         protected virtual void Dispose(bool disposing)
@@ -621,8 +242,5 @@ namespace Dupples_finder_UI
         }
 
         #endregion
-        #endregion
-
-
     }
 }

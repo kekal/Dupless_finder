@@ -14,13 +14,14 @@ namespace Dupples_finder_UI
     {
 
         public double Match { get; set; }
-
+        public float[] MatchPoints { get; set; }
+        public string MatchString => Match.ToString("F");
 
         public ImageInfo Image1 { get; set; }
 
         public ImageInfo Image2 { get; set; }
 
-        public string MatchString => Match.ToString("F");
+
 
 
         public void Dispose()
@@ -39,7 +40,7 @@ namespace Dupples_finder_UI
     {
         
         private static readonly Semaphore Sem = new Semaphore(Environment.ProcessorCount, Environment.ProcessorCount);
-        private static object Lock = new object();
+        private static readonly object Lock = new object();
         public string FilePath { get; set; }
 
         private ImageSource _image;
