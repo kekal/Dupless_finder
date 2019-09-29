@@ -103,6 +103,7 @@
     </ApplicationDefinition>
     <Compile Include="CalcOperations.cs" />
     <Compile Include="DisposableObject.cs" />
+    <Compile Include="ImageInfo.cs" />
     <Compile Include="ImagePair.cs" />
     <Compile Include="LoadingOperations.cs" />
     <Compile Include="RelayCommand.cs" />
