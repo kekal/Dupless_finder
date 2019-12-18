@@ -29,8 +29,20 @@
     
     <Style TargetType="{x:Type DataGrid}">
         <Setter Property="Background" Value="{x:Null}"/>
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="BorderBrush" Value="{x:Null}"/>
     </Style>
-    
+
+    <Style TargetType="{x:Type DataGridRow}">
+        <Setter Property="Background" Value="{x:Null}" />
+    </Style>
+
+    <Style TargetType="{x:Type Label}">
+        <Setter Property="Background" Value="{x:Null}"/>
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="BorderBrush" Value="{x:Null}"/>
+    </Style>
+
     <Style x:Key="LoadingLabelStyle" TargetType="{x:Type Label}">
         <Setter Property="HorizontalAlignment" Value="Center" />
         <Setter Property="VerticalAlignment" Value="Center" />

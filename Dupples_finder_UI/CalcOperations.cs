@@ -49,26 +49,23 @@ namespace Dupples_finder_UI
         protected void UpdateIterationsCount()
         {
             Interlocked.Increment(ref CompletedIterations[0]);
-            PublishProgress();
+
+            var step = Iterations[0] / 500 + 1;
+            double progress = 100.0 * CompletedIterations[0] / Iterations[0];
+            if (CompletedIterations[0] % step == 0)
+            {
+                _vm.Dispatcher?.BeginInvoke(new Func<bool>(() =>
+                {
+                    _vm.CalcProgress = progress;
+                    return false;
+                }));
+            }
+            //Thread.Sleep(1);
         }
 
         protected void SetProgressIterationsScope(List<Task> elements)
         {
             Iterations[0] = elements.Count;
-        }
-
-        private void PublishProgress()
-        {
-            _vm.Dispatcher?.BeginInvoke(new Func<bool>(() =>
-            {
-                var progress = 100.0 * CompletedIterations[0] / Iterations[0];
-                if (progress - _vm.CalcProgress > 0.1 )
-                {
-                    _vm.CalcProgress = progress;
-                }
-                return false;
-            }));
-            Thread.Sleep(1);
         }
     }
 

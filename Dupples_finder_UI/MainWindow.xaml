@@ -6,11 +6,13 @@
         xmlns:materialIcons="clr-namespace:MaterialIcons;assembly=MaterialIcons"
         x:Class="Dupples_finder_UI.MainWindow"
         mc:Ignorable="d"
-        Title="MainWindow" Height="800" Width="800">
+        Title="MainWindow" Height="800" Width="800" Background="#FF222222">
 
     <Window.DataContext>
         <local:MainViewModel/>
     </Window.DataContext>
+
+    <!--<StackPanel>-->
 
     <Grid>
         <Grid.RowDefinitions>
@@ -57,11 +59,10 @@
         <DataGrid Grid.Row="1" RowHeight="{Binding ThumbnailSize}" ItemsSource="{Binding PairDataCollection}" CanUserAddRows="False"  CellStyle="{StaticResource ImageCellStyle}" AutoGenerateColumns="False" HeadersVisibility="None" GridLinesVisibility="Horizontal" 
 
                   ScrollViewer.CanContentScroll="True" 
-                  VirtualizingPanel.ScrollUnit="Pixel" 
+                  VirtualizingPanel.ScrollUnit="Pixel"   
                   
 
         >
-
 
             <DataGrid.Columns>
                 <DataGridTemplateColumn CanUserResize="False" >
@@ -75,28 +76,37 @@
                                     </ItemsPanelTemplate>
                                 </ListView.ItemsPanel>-->
 
-                            <Grid Height="{Binding RowHeight, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type DataGrid}}}">
+                            <Grid>
+                                <!--<Grid Height="{Binding RowHeight, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type DataGrid}}}">-->
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="{Binding ThumbnailSize}" />
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="{Binding ThumbnailSize}" />
                                 </Grid.ColumnDefinitions>
 
+                                <Label Content="{Binding Image1.FileName}" Grid.Row="0" />
+                                <Label Content="{Binding Image2.FileName}" Grid.Row="0" Grid.Column="2"></Label>
 
-                                <Button>
+                                <Button ToolTip="{Binding Image1.FilePath}"  Grid.Column="0" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Center">
                                     <Button.InputBindings>
                                         <MouseBinding Command="{Binding Image1.ImageClick}" Gesture="LeftDoubleClick" />
                                     </Button.InputBindings>
-                                    <Image Source="{Binding Image1.Image, BindsDirectlyToSource=True, IsAsync=True, Mode=OneWay}" Tag="{Binding Image1.FilePath}" Height="{Binding RowHeight, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type DataGrid}}}" />
+                                    <!--<Image Source="{Binding Image1.Image, BindsDirectlyToSource=True, IsAsync=True, Mode=OneWay}" Tag="{Binding Image1.FilePath}" Height="{Binding RowHeight, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type DataGrid}}}" />-->
+                                    <Image Source="{Binding Image1.Image, BindsDirectlyToSource=True, IsAsync=True, Mode=OneWay}" Tag="{Binding Image1.FilePath}" VerticalAlignment="Center" HorizontalAlignment="Center"  />
                                 </Button>
-                                <StackPanel Grid.Column="1" MinWidth="20">
-                                    <Label Content="{Binding MatchString}" />
+                                <StackPanel  MinWidth="20" Grid.Column="1" Grid.Row="1">
+                                    <Label Content="{Binding MatchString}" HorizontalAlignment="Center" />
                                 </StackPanel>
-                                <Button  Grid.Column="2">
+                                <Button ToolTip="{Binding Image2.FilePath}" Grid.Column="2" Grid.Row="1" HorizontalAlignment="Right" VerticalAlignment="Center">
                                     <Button.InputBindings>
                                         <MouseBinding Command="{Binding Image2.ImageClick}" Gesture="LeftDoubleClick" />
                                     </Button.InputBindings>
-                                    <Image Source="{Binding Image2.Image, BindsDirectlyToSource=True, IsAsync=True, Mode=OneWay}" Tag="{Binding Image2.FilePath}" Height="{Binding RowHeight, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type DataGrid}}}" />
+                                    <!--<Image Source="{Binding Image2.Image, BindsDirectlyToSource=True, IsAsync=True, Mode=OneWay}" Tag="{Binding Image2.FilePath}" Height="{Binding RowHeight, RelativeSource={RelativeSource FindAncestor, AncestorType={x:Type DataGrid}}}" />-->
+                                    <Image Source="{Binding Image2.Image, BindsDirectlyToSource=True, IsAsync=True, Mode=OneWay}" Tag="{Binding Image2.FilePath}" VerticalAlignment="Center" HorizontalAlignment="Center" />
                                 </Button>
                             </Grid>
                             <!--</ListView>-->
@@ -129,4 +139,5 @@
       </ItemsControl.Template>
     </ItemsControl>-->
     </Grid>
+    <!--</StackPanel>-->
 </Window>

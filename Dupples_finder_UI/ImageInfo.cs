@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -15,8 +16,11 @@ namespace Dupples_finder_UI
         private static readonly object Lock = new object();
         public string FilePath { get; set; }
 
+        public string FileName => FilePath.Split('\\').LastOrDefault();
+
         private ImageSource _image;
         private Mat _storedMat;
+        private string _fileName;
 
         public Mat StoredMat
         {

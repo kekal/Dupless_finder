@@ -191,7 +191,7 @@ namespace Dupples_finder_UI
                 
                 for (var i = 1; i < DataCollection.Count; i += 2)
                 {
-                    colle.Add(new ImagePair
+                    colle.Add(new ImagePair(ThumbnailSize)
                     {
                         Image1 = DataCollection[i - 1],
                         Image2 = DataCollection[i]
@@ -256,7 +256,7 @@ namespace Dupples_finder_UI
         {
             Dispatcher?.Invoke(() =>
             {
-                var temp = _matches.Select(match => new ImagePair
+                var temp = _matches.Select(match => new ImagePair(ThumbnailSize)
                 {
                     Image1 = DataCollection.FirstOrDefault(im => im.FilePath == match.Name1),
                     Image2 = DataCollection.FirstOrDefault(im => im.FilePath == match.Name2),
