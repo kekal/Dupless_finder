@@ -78,7 +78,11 @@ namespace Dupples_finder_UI
         public RelayCommand ImageClick { get; private set; }
         private void PrepareCommands()
         {
-            ImageClick = new RelayCommand(() => Process.Start(FilePath));
+            //ImageClick = new RelayCommand(() => Process.Start(FilePath));
+            ImageClick = new RelayCommand(() =>
+            {
+                MainViewModel.Inst.Openview(FilePath);
+            });
         }
 
         private Lazy<ImageSource> Laz { get; set; }

@@ -12,7 +12,6 @@
         <local:MainViewModel/>
     </Window.DataContext>
 
-    <!--<StackPanel>-->
 
     <Grid>
         <Grid.RowDefinitions>
@@ -20,11 +19,12 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="{Binding GridWidth}"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
 
-        <ToolBarTray Background="White" Grid.ColumnSpan="2" >
+        <ToolBarTray Grid.ColumnSpan="2" >
             <ToolBar Band="1" BandIndex="1">
                 <Button Command="{Binding LoadCommad}">
                     <materialIcons:MaterialIcon Icon="ic_open_in_browser"/>
@@ -56,10 +56,12 @@
                   VirtualizingPanel.IsContainerVirtualizable="True" 
         
         -->
-        <DataGrid Grid.Row="1" RowHeight="{Binding ThumbnailSize}" ItemsSource="{Binding PairDataCollection}" CanUserAddRows="False"  CellStyle="{StaticResource ImageCellStyle}" AutoGenerateColumns="False" HeadersVisibility="None" GridLinesVisibility="Horizontal" 
+        <DataGrid Grid.Row="1" Grid.Column="0" RowHeight="{Binding ThumbnailSize}" ItemsSource="{Binding PairDataCollection}" CanUserAddRows="False"  CellStyle="{StaticResource ImageCellStyle}" AutoGenerateColumns="False" HeadersVisibility="None" GridLinesVisibility="Horizontal"  
+                  MaxWidth="{Binding GridWidth}"   
+                  HorizontalScrollBarVisibility="Disabled" 
 
                   ScrollViewer.CanContentScroll="True" 
-                  VirtualizingPanel.ScrollUnit="Pixel"   
+                  VirtualizingPanel.ScrollUnit="Pixel" HorizontalAlignment="Left" 
                   
 
         >
@@ -84,7 +86,7 @@
                                 </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="{Binding ThumbnailSize}" />
-                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="50"/>
                                     <ColumnDefinition Width="{Binding ThumbnailSize}" />
                                 </Grid.ColumnDefinitions>
 
@@ -116,8 +118,26 @@
             </DataGrid.Columns>
         </DataGrid>
 
-        <Label Content="Loading image collection..." Grid.Row="1" Style="{DynamicResource LoadingLabelStyle}" />
+        <Label Content="Loading PreviewImage collection..." Grid.Row="1" Grid.Column="0"
+               Style="{DynamicResource LoadingLabelStyle}" d:IsHidden="True" />
 
+        <Button x:Name="ImagePreviewButton"  Grid.Row="1" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Height="{Binding PreviewSize}" UseLayoutRounding="False" 
+            d:IsHidden="True">
+            
+            <Button.InputBindings>
+                <MouseBinding Gesture="RightClick" Command="{Binding CloseView}" />
+                <MouseBinding Gesture="{x:Static local:MouseWheelGesture.Up}"  Command="{Binding ZoomIn}" 
+                              CommandParameter="{Binding ActualHeight, ElementName=PreviewImage, Mode=OneWay}" />
+                <MouseBinding Gesture="{x:Static local:MouseWheelGesture.Down}"  Command="{Binding ZoomOut}" 
+                              CommandParameter="{Binding ActualHeight, ElementName=PreviewImage, Mode=OneWay}" />
+            </Button.InputBindings>
+            <Button.Template> <!-- Reseting default button behavior -->
+                <ControlTemplate TargetType="{x:Type Button}">
+                    <ContentPresenter  Content="{TemplateBinding Content}"  />
+                </ControlTemplate>
+            </Button.Template>
+            <Image x:Name="PreviewImage" Source="{Binding CurrentImageView}" MaxWidth="100000000" MaxHeight="100000000" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Width="{Binding CurrentImageView.Width, Mode=OneWay}"/>
+        </Button>
 
         <!--<ItemsControl Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" ItemsSource="{Binding DataCollection, IsAsync=True}" >
       <ItemsControl.ItemTemplate>
@@ -139,5 +159,4 @@
       </ItemsControl.Template>
     </ItemsControl>-->
     </Grid>
-    <!--</StackPanel>-->
 </Window>

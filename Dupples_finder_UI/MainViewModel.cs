@@ -7,11 +7,16 @@ using System.Linq;
 using System.Windows.Media.Imaging;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Controls;
+using System.Windows.Media;
 using OpenCvSharp;
 using Timer = System.Threading.Timer;
 
 namespace Dupples_finder_UI
 {
+
+
+
     public class MainViewModel : DependencyObject, IDisposable
     {
         public static MainViewModel Inst;
@@ -26,6 +31,7 @@ namespace Dupples_finder_UI
             StartMemoryAmountPublishing();
 
             _calcOperations = new CalcOperations(Inst);
+            PreviewSize = GridWidth;
         }
         
         // ==================================================================================================================
@@ -42,6 +48,8 @@ namespace Dupples_finder_UI
         public static readonly DependencyProperty CalcProgressTextProperty = DependencyProperty.Register("CalcProgressText", typeof(string), typeof(MainViewModel), new PropertyMetadata(default(string)));
         public static readonly DependencyProperty AllocMemProperty = DependencyProperty.Register("AllocMem", typeof(long), typeof(MainViewModel), new PropertyMetadata(default(long)));
         public static readonly DependencyProperty IsProgrVisibleProperty = DependencyProperty.Register("IsProgrVisible", typeof(Visibility), typeof(MainViewModel), new PropertyMetadata(Visibility.Collapsed));
+        public static readonly DependencyProperty CurrentImageViewProperty = DependencyProperty.Register("CurrentImageView", typeof(ImageSource), typeof(MainViewModel), new PropertyMetadata(default(ImageSource)));
+        public static readonly DependencyProperty PreviewSizeProperty = DependencyProperty.Register("PreviewSize", typeof(double), typeof(MainViewModel), new PropertyMetadata(default(double)));
 
         #endregion
 
@@ -58,9 +66,17 @@ namespace Dupples_finder_UI
 
         // ==================================================================================================================
 
+
+
+
         #region Injected
 
         public ushort ThumbnailSize { get; }
+
+        /// <summary>  Thumbnail list width computed from ThumbnailSize  </summary>
+        public double GridWidth {
+            get { return 2 * ThumbnailSize + 50; }
+        }
 
         public IList<ImageInfo> DataCollection
         {
@@ -128,7 +144,20 @@ namespace Dupples_finder_UI
         {
             get { return (long)GetValue(AllocMemProperty); }
             set { SetValue(AllocMemProperty, value); }
-        } 
+        }
+
+        public ImageSource CurrentImageView
+        {
+            get { return (ImageSource)GetValue(CurrentImageViewProperty); }
+            set { SetValue(CurrentImageViewProperty, value); }
+        }
+
+        public double PreviewSize
+        {
+            get { return (double) GetValue(PreviewSizeProperty); }
+            set { SetValue(PreviewSizeProperty, value); }
+        }
+
         #endregion
         #endregion
 
@@ -140,6 +169,10 @@ namespace Dupples_finder_UI
         public RelayCommand CreateHashes { get; private set; }
         public RelayCommand LoadTemplateCollection { get; private set; }
         public RelayCommand CreateHashesFromCollection { get; private set; }
+        public RelayCommand CloseView { get; private set; }
+        public RelayCommand<double> ZoomIn { get; private set; }
+        public RelayCommand<double> ZoomOut { get; private set; }
+
 
 
 
@@ -212,7 +245,25 @@ namespace Dupples_finder_UI
                 result.ContinueWith(e1 => _matches = _calcOperations.CreateMatchCollection(hashesDict).Distinct())
                       .ContinueWith(e2 => { PopulateDupes(); });
             });
+
+            CloseView = new RelayCommand(()=>
+            {
+                CurrentImageView = null;
+                PreviewSize = GridWidth;
+            });
+
+            ZoomIn = new RelayCommand<double>(p =>
+            {
+                PreviewSize = p * 1.1 + 20;
+            });
+
+            ZoomOut = new RelayCommand<double>(p =>
+            {
+                PreviewSize = p * 0.9 + 20;
+            });
         }
+
+        
 
         private void ClearCollectionCache()
         {
@@ -287,5 +338,19 @@ namespace Dupples_finder_UI
         }
 
         #endregion
+
+        public void Openview(string filePath)
+        {
+            Uri.TryCreate(filePath, UriKind.Absolute, out Uri uri);
+            try
+            {
+                CurrentImageView = new BitmapImage(uri);
+            }
+            catch (Exception e)
+            {
+                MessageBox.Show(e.Message);
+            }
+            
+        }
     }
 }
