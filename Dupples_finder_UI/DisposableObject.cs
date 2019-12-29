@@ -18,7 +18,7 @@ namespace Dupples_finder_UI
         }
 
 
-        protected virtual void Dispose(bool disposing)
+        private void Dispose(bool disposing)
         {
             if (!IsDisposed)
             {

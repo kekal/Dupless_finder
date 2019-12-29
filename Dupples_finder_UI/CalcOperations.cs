@@ -15,18 +15,18 @@ namespace Dupples_finder_UI
     {
         private static MainViewModel _vm;
 
-        protected int[] Iterations;
-        protected int[] CompletedIterations;
+        private int[] _iterations;
+        private int[] _completedIterations;
 
-        public OperationsWithProgress(MainViewModel vm)
+        protected OperationsWithProgress(MainViewModel vm)
         {
             _vm = vm;
         }
 
         protected void EnablePublishingProgress()
         {
-            Iterations = new[] { -1 };
-            CompletedIterations = new[] { -1 };
+            _iterations = new[] { -1 };
+            _completedIterations = new[] { -1 };
             _vm.Dispatcher?.BeginInvoke(new Func<bool>(() =>
             {
                 _vm.CalcProgress = 0;
@@ -48,11 +48,11 @@ namespace Dupples_finder_UI
 
         protected void UpdateIterationsCount()
         {
-            Interlocked.Increment(ref CompletedIterations[0]);
+            Interlocked.Increment(ref _completedIterations[0]);
 
-            var step = Iterations[0] / 500 + 1;
-            double progress = 100.0 * CompletedIterations[0] / Iterations[0];
-            if (CompletedIterations[0] % step == 0)
+            var step = _iterations[0] / 500 + 1;
+            double progress = 100.0 * _completedIterations[0] / _iterations[0];
+            if (_completedIterations[0] % step == 0)
             {
                 _vm.Dispatcher?.BeginInvoke(new Func<bool>(() =>
                 {
@@ -65,7 +65,7 @@ namespace Dupples_finder_UI
 
         protected void SetProgressIterationsScope(List<Task> elements)
         {
-            Iterations[0] = elements.Count;
+            _iterations[0] = elements.Count;
         }
     }
 
@@ -75,7 +75,7 @@ namespace Dupples_finder_UI
 
         public ConcurrentDictionary<string, MatOfFloat> CalcSiftHashes(IEnumerable<ImageInfo> infos, out Task result, int thumbSize = 100)
         {
-            Trace.WriteLine($"CalcSiftHashes started");
+            Trace.WriteLine("CalcSiftHashes started");
 
             EnablePublishingProgress();
 

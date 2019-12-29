@@ -20,7 +20,7 @@ namespace Dupples_finder_UI
 
         private ImageSource _image;
         private Mat _storedMat;
-        private string _fileName;
+        //private string _fileName;
 
         public Mat StoredMat
         {
@@ -32,23 +32,18 @@ namespace Dupples_finder_UI
                 }
                 return _storedMat;
             }
-            private set => _storedMat = value;
+            //private set => _storedMat = value;
         }
 
         public ImageSource Image
         {
             get
             {
-                if (Environment.StackTrace.Contains("Clr"))
-                {
-                    Trace.WriteLine($"Main thread (id {Thread.CurrentThread.ManagedThreadId}) requested {Path.GetFileName(FilePath)}");
-                }
-                else
-                {
-                    Trace.WriteLine($"Background thread {Thread.CurrentThread.ManagedThreadId} loads new {Path.GetFileName(FilePath)}");
-                }
+                Trace.WriteLine(Environment.StackTrace.Contains("Clr")
+                    ? $"Main thread (id {Thread.CurrentThread.ManagedThreadId}) requested {Path.GetFileName(FilePath)}"
+                    : $"Background thread {Thread.CurrentThread.ManagedThreadId} loads new {Path.GetFileName(FilePath)}");
 
-                
+
                 if (_image == null)
                 {
                     if (!Environment.StackTrace.Contains("Clr"))
@@ -71,7 +66,7 @@ namespace Dupples_finder_UI
             FilePath = path;
             Trace.WriteLine($"{Thread.CurrentThread.ManagedThreadId} started to load {Path.GetFileName(FilePath)}");
 
-            Laz = new Lazy<ImageSource>(() => LoadImage(FilePath));
+            Laz = new Lazy<ImageSource>(() => LoadImage(/*FilePath*/));
             PrepareCommands();
         }
 
@@ -87,7 +82,7 @@ namespace Dupples_finder_UI
 
         private Lazy<ImageSource> Laz { get; set; }
 
-        private ImageSource LoadImage(string path)
+        private ImageSource LoadImage(/*string path*/)
         {
             if (_storedMat == null || _image == null)
             {
@@ -131,9 +126,9 @@ namespace Dupples_finder_UI
             double decodeSize = MainViewModel.Inst.ThumbnailSize;
             var sourceMat = new Mat(FilePath);
 
-            if (sourceMat?.Width < 1 || sourceMat?.Height < 1)
+            if (sourceMat.Width < 1 || sourceMat.Height < 1)
             {
-                sourceMat?.Release();
+                sourceMat.Release();
                 lock (Lock)
                 {
                     _storedMat?.Release();

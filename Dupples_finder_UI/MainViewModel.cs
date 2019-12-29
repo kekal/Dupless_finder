@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Windows;
@@ -7,9 +6,7 @@ using System.Linq;
 using System.Windows.Media.Imaging;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Controls;
 using System.Windows.Media;
-using OpenCvSharp;
 using Timer = System.Threading.Timer;
 
 namespace Dupples_finder_UI
@@ -17,7 +14,7 @@ namespace Dupples_finder_UI
 
 
 
-    public class MainViewModel : DependencyObject, IDisposable
+    public sealed class MainViewModel : DependencyObject, IDisposable
     {
         public static MainViewModel Inst;
         public MainViewModel()
@@ -39,10 +36,10 @@ namespace Dupples_finder_UI
         #region Dependency connections
 
         //public static readonly DependencyProperty FilesProperty = DependencyProperty.Register("Files", typeof(string[]), typeof(MainViewModel), new PropertyMetadata(default(string[])));
-        public static readonly DependencyProperty IsHardModeProperty = DependencyProperty.Register("IsHardMode", typeof(bool), typeof(MainViewModel), new PropertyMetadata(default(bool)));
+        //public static readonly DependencyProperty IsHardModeProperty = DependencyProperty.Register("IsHardMode", typeof(bool), typeof(MainViewModel), new PropertyMetadata(default(bool)));
         public static readonly DependencyProperty DataCollectionProperty = DependencyProperty.Register("DataCollection", typeof(IList<ImageInfo>), typeof(MainViewModel), new PropertyMetadata(new List<ImageInfo>()));
         public static readonly DependencyProperty PairDataCollectionProperty = DependencyProperty.Register("PairDataCollection", typeof(IList<ImagePair>), typeof(MainViewModel), new PropertyMetadata(default(IList<ImagePair>)));
-        public static readonly DependencyProperty ImageProperty = DependencyProperty.Register("Image", typeof(object), typeof(MainViewModel), new PropertyMetadata(default(BitmapImage)));
+        //public static readonly DependencyProperty ImageProperty = DependencyProperty.Register("Image", typeof(object), typeof(MainViewModel), new PropertyMetadata(default(BitmapImage)));
         public static readonly DependencyProperty IsLoadedProperty = DependencyProperty.Register("IsLoaded", typeof(bool), typeof(MainViewModel), new PropertyMetadata(default(bool)));
         public static readonly DependencyProperty CalcProgressProperty = DependencyProperty.Register("CalcProgress", typeof(double), typeof(MainViewModel), new PropertyMetadata(default(double)));
         public static readonly DependencyProperty CalcProgressTextProperty = DependencyProperty.Register("CalcProgressText", typeof(string), typeof(MainViewModel), new PropertyMetadata(default(string)));
@@ -57,7 +54,7 @@ namespace Dupples_finder_UI
 
         #region Fields
 
-        internal ConcurrentDictionary<string, MatOfFloat> _hashesDict;
+        //internal ConcurrentDictionary<string, MatOfFloat> _hashesDict;
         private IEnumerable<Result> _matches;
 
         // ==================================================================================================================
@@ -69,16 +66,14 @@ namespace Dupples_finder_UI
 
 
 
-        #region Injected
+        #region Injected properties
 
         public ushort ThumbnailSize { get; }
 
-        /// <summary>  Thumbnail list width computed from ThumbnailSize  </summary>
-        public double GridWidth {
-            get { return 2 * ThumbnailSize + 50; }
-        }
+        /// <summary>Thumbnail list width computed from ThumbnailSize  </summary>
+        public double GridWidth => 2 * ThumbnailSize + 80;
 
-        public IList<ImageInfo> DataCollection
+        private IList<ImageInfo> DataCollection
         {
             get => (IList<ImageInfo>)GetValue(DataCollectionProperty);
             set
@@ -106,27 +101,27 @@ namespace Dupples_finder_UI
             }
         }
 
-        public bool IsHardMode
-        {
-            get => (bool)GetValue(IsHardModeProperty);
-            set => SetValue(IsHardModeProperty, value);
-        }
+        //public bool IsHardMode
+        //{
+        //    get => (bool)GetValue(IsHardModeProperty);
+        //    set => SetValue(IsHardModeProperty, value);
+        //}
 
         public bool IsLoaded
         {
-            get { return (bool)GetValue(IsLoadedProperty); }
-            set { SetValue(IsLoadedProperty, value); }
+            get => (bool)GetValue(IsLoadedProperty);
+            set => SetValue(IsLoadedProperty, value);
         }
 
         public Visibility IsProgrVisible
         {
-            get { return (Visibility)GetValue(IsProgrVisibleProperty); }
-            set { SetValue(IsProgrVisibleProperty, value);}
+            get => (Visibility)GetValue(IsProgrVisibleProperty);
+            set => SetValue(IsProgrVisibleProperty, value);
         }
 
         public double CalcProgress
         {
-            get { return (double)GetValue(CalcProgressProperty); }
+            get => (double)GetValue(CalcProgressProperty);
             set
             {
                 CalcProgressText = value.ToString("F1") + '%';
@@ -142,20 +137,20 @@ namespace Dupples_finder_UI
 
         public long AllocMem
         {
-            get { return (long)GetValue(AllocMemProperty); }
-            set { SetValue(AllocMemProperty, value); }
+            get => (long)GetValue(AllocMemProperty);
+            set => SetValue(AllocMemProperty, value);
         }
 
         public ImageSource CurrentImageView
         {
-            get { return (ImageSource)GetValue(CurrentImageViewProperty); }
-            set { SetValue(CurrentImageViewProperty, value); }
+            get => (ImageSource)GetValue(CurrentImageViewProperty);
+            set => SetValue(CurrentImageViewProperty, value);
         }
 
         public double PreviewSize
         {
-            get { return (double) GetValue(PreviewSizeProperty); }
-            set { SetValue(PreviewSizeProperty, value); }
+            get => (double) GetValue(PreviewSizeProperty);
+            set => SetValue(PreviewSizeProperty, value);
         }
 
         #endregion
@@ -166,7 +161,7 @@ namespace Dupples_finder_UI
         #region Commands
 
         public RelayCommand LoadCommad { get; private set; }
-        public RelayCommand CreateHashes { get; private set; }
+        //public RelayCommand CreateHashes { get; private set; }
         public RelayCommand LoadTemplateCollection { get; private set; }
         public RelayCommand CreateHashesFromCollection { get; private set; }
         public RelayCommand CloseView { get; private set; }
@@ -240,7 +235,7 @@ namespace Dupples_finder_UI
                 //IsProgrVisible = Visibility.Visible;
                 Thread.CurrentThread.Priority = ThreadPriority.Highest;
 
-                ClearCollectionCache();
+                //ClearCollectionCache();
                 var hashesDict = _calcOperations.CalcSiftHashes(DataCollection, out Task result);
                 result.ContinueWith(e1 => _matches = _calcOperations.CreateMatchCollection(hashesDict).Distinct())
                       .ContinueWith(e2 => { PopulateDupes(); });
@@ -265,16 +260,16 @@ namespace Dupples_finder_UI
 
         
 
-        private void ClearCollectionCache()
-        {
-            if (_hashesDict != null)
-            {
-                foreach (var mat in _hashesDict.Values)
-                {
-                    mat?.Release();
-                }
-            }
-        }
+        //private void ClearCollectionCache()
+        //{
+        //    if (_hashesDict != null)
+        //    {
+        //        foreach (var mat in _hashesDict.Values)
+        //        {
+        //            mat?.Release();
+        //        }
+        //    }
+        //}
 
         #endregion
 
@@ -320,7 +315,7 @@ namespace Dupples_finder_UI
             });
         }
 
-        protected virtual void Dispose(bool disposing)
+        private void Dispose(bool disposing)
         {
             if (disposing)
             {
@@ -334,7 +329,7 @@ namespace Dupples_finder_UI
         public void Dispose()
         {
             Dispose(true);
-            GC.SuppressFinalize(this);
+            //GC.SuppressFinalize(this);
         }
 
         #endregion

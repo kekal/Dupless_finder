@@ -1,15 +1,4 @@
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Windows;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using OpenCvSharp;
 
 namespace Dupples_finder_UI
 {
@@ -25,15 +14,15 @@ namespace Dupples_finder_UI
             Direction = WheelDirection.Up
         };
 
-        public MouseWheelGesture() : base(MouseAction.WheelClick)
+        private MouseWheelGesture() : base(MouseAction.WheelClick)
         {
         }
 
-        public MouseWheelGesture(ModifierKeys modifiers) : base(MouseAction.WheelClick, modifiers)
-        {
-        }
+        //public MouseWheelGesture(ModifierKeys modifiers) : base(MouseAction.WheelClick, modifiers)
+        //{
+        //}
 
-        public WheelDirection Direction { get; set; }
+        private WheelDirection Direction { get; set; }
 
         public override bool Matches(object targetElement, InputEventArgs inputEventArgs)
         {
@@ -52,7 +41,7 @@ namespace Dupples_finder_UI
             }
         }
 
-        public enum WheelDirection
+        private enum WheelDirection
         {
             None,
             Up,

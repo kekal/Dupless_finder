@@ -118,10 +118,9 @@
             </DataGrid.Columns>
         </DataGrid>
 
-        <Label Content="Loading PreviewImage collection..." Grid.Row="1" Grid.Column="0"
-               Style="{DynamicResource LoadingLabelStyle}" d:IsHidden="True" />
+        <Label Content="Loading PreviewImage collection..." Grid.Row="1" Grid.Column="0" Style="{DynamicResource LoadingLabelStyle}" d:IsHidden="True" />
 
-        <Button x:Name="ImagePreviewButton"  Grid.Row="1" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Height="{Binding PreviewSize}" UseLayoutRounding="False" 
+        <Button Grid.Row="1" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Height="{Binding PreviewSize}" UseLayoutRounding="False" 
             d:IsHidden="True">
             
             <Button.InputBindings>

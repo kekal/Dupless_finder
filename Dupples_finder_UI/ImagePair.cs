@@ -7,7 +7,7 @@ namespace Dupples_finder_UI
     {
         public static readonly DependencyProperty ThumbnailSizeProperty = DependencyProperty.Register("ThumbnailSize", typeof(ushort), typeof(ImagePair), new PropertyMetadata(default(ushort)));
 
-        public double Match { get; set; }
+        public double Match { private get; set; }
         public float[] MatchPoints { get; set; }
         public string MatchString => Match.ToString("F");
 
@@ -17,8 +17,8 @@ namespace Dupples_finder_UI
 
         public ushort ThumbnailSize
         {
-            get { return (ushort) GetValue(ThumbnailSizeProperty); }
-            set { SetValue(ThumbnailSizeProperty, value); }
+            get => (ushort) GetValue(ThumbnailSizeProperty);
+            set => SetValue(ThumbnailSizeProperty, value);
         }
 
         public ImagePair(ushort thumbnailSize)

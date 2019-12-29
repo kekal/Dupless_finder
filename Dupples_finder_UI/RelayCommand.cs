@@ -5,37 +5,33 @@ namespace Dupples_finder_UI
 {
     public class RelayCommand : ICommand
     {
-        Action _TargetExecuteMethod;
-        Func<bool> _TargetCanExecuteMethod;
+        readonly Action _targetExecuteMethod;
+        //readonly Func<bool> _targetCanExecuteMethod;
 
         public RelayCommand(Action executeMethod)
         {
-            _TargetExecuteMethod = executeMethod;
+            _targetExecuteMethod = executeMethod;
         }
 
-        public RelayCommand(Action executeMethod, Func<bool> canExecuteMethod)
-        {
-            _TargetExecuteMethod = executeMethod;
-            _TargetCanExecuteMethod = canExecuteMethod;
-        }
+        //public RelayCommand(Action executeMethod, Func<bool> canExecuteMethod)
+        //{
+        //    _targetExecuteMethod = executeMethod;
+        //    _targetCanExecuteMethod = canExecuteMethod;
+        //}
 
-        public void RaiseCanExecuteChanged()
-        {
-            CanExecuteChanged(this, EventArgs.Empty);
-        }
+        //public void RaiseCanExecuteChanged()
+        //{
+        //    CanExecuteChanged(this, EventArgs.Empty);
+        //}
         #region ICommand Members
 
         public bool CanExecute(object parameter)
         {
-            if (_TargetCanExecuteMethod != null)
-            {
-                return _TargetCanExecuteMethod();
-            }
-            if (_TargetExecuteMethod != null)
-            {
-                return true;
-            }
-            return false;
+            //if (_targetCanExecuteMethod != null)
+            //{
+            //    return _targetCanExecuteMethod();
+            //}
+            return _targetExecuteMethod != null;
         }
 
         // Beware - should use weak references if command instance lifetime is longer than lifetime of UI objects that get hooked up to command
@@ -44,48 +40,41 @@ namespace Dupples_finder_UI
 
         public void Execute(object parameter)
         {
-            if (_TargetExecuteMethod != null)
-            {
-                _TargetExecuteMethod();
-            }
+            _targetExecuteMethod?.Invoke();
         }
         #endregion
     }
 
     public class RelayCommand<T> : ICommand
     {
-        Action<T> _TargetExecuteMethod;
-        Func<T, bool> _TargetCanExecuteMethod;
+        private readonly Action<T> _targetExecuteMethod;
+        //private readonly Func<T, bool> _targetCanExecuteMethod;
 
         public RelayCommand(Action<T> executeMethod)
         {
-            _TargetExecuteMethod = executeMethod;
+            _targetExecuteMethod = executeMethod;
         }
 
-        public RelayCommand(Action<T> executeMethod, Func<T,bool> canExecuteMethod)
-        {
-            _TargetExecuteMethod = executeMethod;
-            _TargetCanExecuteMethod = canExecuteMethod;
-        }
+        //public RelayCommand(Action<T> executeMethod, Func<T,bool> canExecuteMethod)
+        //{
+        //    _targetExecuteMethod = executeMethod;
+        //    _targetCanExecuteMethod = canExecuteMethod;
+        //}
 
-        public void RaiseCanExecuteChanged() 
-        {
-             CanExecuteChanged(this, EventArgs.Empty); 
-        }
+        //public void RaiseCanExecuteChanged() 
+        //{
+        //     CanExecuteChanged(this, EventArgs.Empty); 
+        //}
         #region ICommand Members
 
         public bool CanExecute(object parameter)
         {
-            if (_TargetCanExecuteMethod != null)
-            {
-                T tparm = (T)parameter;
-                return _TargetCanExecuteMethod(tparm);
-            }
-            if (_TargetExecuteMethod != null)
-            {
-                return true;
-            }
-            return false;
+            //if (_targetCanExecuteMethod != null)
+            //{
+            //    T tparm = (T)parameter;
+            //    return _targetCanExecuteMethod(tparm);
+            //}
+            return _targetExecuteMethod != null;
         }
 
         // Beware - should use weak references if command instance lifetime is longer than lifetime of UI objects that get hooked up to command
@@ -94,10 +83,7 @@ namespace Dupples_finder_UI
 
         public void Execute(object parameter)
         {
-            if (_TargetExecuteMethod != null)
-            {
-                _TargetExecuteMethod((T)parameter);
-            }
+            _targetExecuteMethod?.Invoke((T)parameter);
         }
         #endregion
     }

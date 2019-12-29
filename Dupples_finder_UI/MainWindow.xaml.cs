@@ -8,7 +8,7 @@ namespace Dupples_finder_UI
     /// </summary>
     public partial class MainWindow
     {
-        private static MainWindow _inst;
+        //private static MainWindow _inst;
         public MainWindow()
         {
             try
@@ -19,7 +19,7 @@ namespace Dupples_finder_UI
             {
                 Trace.WriteLine(e.Message);
             }
-            _inst = this;
+            //_inst = this;
         }
 
         public static void Update()

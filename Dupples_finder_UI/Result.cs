@@ -4,10 +4,10 @@ namespace Dupples_finder_UI
 {
     public class Result : IEquatable<Result>
     {
-        public string Name1;
-        public string Name2;
-        public double Match;
-        public float[] MatchPoints;
+        public readonly string Name1;
+        public readonly string Name2;
+        public readonly double Match;
+        public readonly float[] MatchPoints;
 
         public Result(string name1, string name2, double match, float[] matchPoints)
         {
