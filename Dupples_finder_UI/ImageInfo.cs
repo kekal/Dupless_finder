@@ -9,19 +9,23 @@ using OpenCvSharp;
 
 namespace Dupples_finder_UI
 {
+    /// <summary>  Class that contains image bitmap, helpers to operate with and information abour class </summary>
     public class ImageInfo : DisposableObject
     {
-        
+        /// <summary>  Semaphore for limited access to the file that belongs to this instance. (for the purposes of controled HDD load) </summary>
         private static readonly Semaphore Sem = new Semaphore(Environment.ProcessorCount, Environment.ProcessorCount);
+
+        /// <summary> An object that garantie that only thread will operate with bitmap inside this class  </summary>
         private static readonly object Lock = new object();
         public string FilePath { get; set; }
 
         public string FileName => FilePath.Split('\\').LastOrDefault();
 
-        private ImageSource _image;
-        private Mat _storedMat;
+
         //private string _fileName;
 
+        private Mat _storedMat;
+        /// <summary>  OpenCv bitmap instance for storing little thumbnail.  </summary>
         public Mat StoredMat
         {
             get
@@ -35,6 +39,8 @@ namespace Dupples_finder_UI
             //private set => _storedMat = value;
         }
 
+        private ImageSource _image;
+        /// <summary> Actual bitmap used on UI. Have a singleton behaviour. The backfield will be filled up during the <c>LoadImage()</c> </summary>
         public ImageSource Image
         {
             get
@@ -66,11 +72,14 @@ namespace Dupples_finder_UI
             FilePath = path;
             Trace.WriteLine($"{Thread.CurrentThread.ManagedThreadId} started to load {Path.GetFileName(FilePath)}");
 
-            Laz = new Lazy<ImageSource>(() => LoadImage(/*FilePath*/));
+            Laz = new Lazy<ImageSource>(() => LoadImage(/*FilePath*/)); // creating the connection for lazy loading of the bitmap.
             PrepareCommands();
         }
 
+        /// <summary> The command that rises during the doubleClick on thumbnail in colletion view control </summary>
         public RelayCommand ImageClick { get; private set; }
+
+        /// <summary>  Method will create commands fot thumbnail view element  </summary>
         private void PrepareCommands()
         {
             //ImageClick = new RelayCommand(() => Process.Start(FilePath));
@@ -80,8 +89,11 @@ namespace Dupples_finder_UI
             });
         }
 
+        /// <summary> Lazy container for <c>Image</c> property </summary>
         private Lazy<ImageSource> Laz { get; set; }
 
+        /// <summary> Method calls <c>StoreMat()</c> simultaneously with controled by semaphore way to reduce the load on HDD </summary>
+        /// <returns>A bitmap when <c>Image</c> getter called</returns>
         private ImageSource LoadImage(/*string path*/)
         {
             if (_storedMat == null || _image == null)
