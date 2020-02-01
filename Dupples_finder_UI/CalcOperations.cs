@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using OpenCvSharp;
+using OpenCvSharp.Flann;
 using OpenCvSharp.XFeatures2D;
 
 namespace Dupples_finder_UI
@@ -213,11 +214,34 @@ namespace Dupples_finder_UI
         private static Tuple<double, double> CalcLinearFactors(KeyValuePair<string, MatOfFloat>[] hashArray, int j, int i, out float[] matchPoints)
         {
             Thread.CurrentThread.Priority = ThreadPriority.Lowest;
-            var matcher = new BFMatcher(NormTypes.L2SQR, crossCheck: true);
-            var bfMatches = matcher.Match(hashArray[j].Value, hashArray[i].Value).OrderBy(o => o.Distance).Take(10).Select(o => o.Distance).ToList();
-            matcher.Dispose();
+            var matchers = new List<DescriptorMatcher>
+            {
+                new BFMatcher(NormTypes.L2SQR, crossCheck: true),
+                new FlannBasedMatcher(new KDTreeIndexParams(2), new SearchParams()),
+                new FlannBasedMatcher(new LshIndexParams(10, 10, 2)),
+                new FlannBasedMatcher()
+            };
 
-            matchPoints = bfMatches.Count < 2 ? new[] { Single.MaxValue, Single.MaxValue } : bfMatches.ToArray();
+            List<float> bfMatches = null;
+            foreach (var matcher in matchers)
+            {
+                try
+                {
+                    bfMatches = matcher.Match(hashArray[j].Value, hashArray[i].Value).OrderBy(o => o.Distance).Take(10).Select(o => o.Distance).ToList();
+                    break;
+                }
+                catch {}
+            }
+
+            if (bfMatches == null || bfMatches.Count < 2)
+            {
+                bfMatches = new List<float> {float.MaxValue, float.MaxValue};
+                Trace.WriteLine($"All Flann matchers failed:\n\t{hashArray[j].Key}\n\t{hashArray[i].Key}");
+            }
+
+            matchers.ForEach(m => m.Dispose());
+
+            matchPoints = bfMatches.ToArray();
 
             var xes = new List<double>();
             var yes = new List<double>();

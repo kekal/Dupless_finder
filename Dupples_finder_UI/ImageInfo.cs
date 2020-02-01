@@ -77,16 +77,19 @@ namespace Dupples_finder_UI
         }
 
         /// <summary> The command that rises during the doubleClick on thumbnail in colletion view control </summary>
+        public RelayCommand ImageDoubleClick { get; private set; }
         public RelayCommand ImageClick { get; private set; }
 
         /// <summary>  Method will create commands fot thumbnail view element  </summary>
         private void PrepareCommands()
         {
-            //ImageClick = new RelayCommand(() => Process.Start(FilePath));
-            ImageClick = new RelayCommand(() =>
+            
+            ImageDoubleClick = new RelayCommand(() =>
             {
                 MainViewModel.Inst.Openview(FilePath);
             });
+
+            ImageClick = new RelayCommand(() => Process.Start(FilePath));
         }
 
         /// <summary> Lazy container for <c>Image</c> property </summary>

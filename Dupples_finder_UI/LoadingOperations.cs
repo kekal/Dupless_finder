@@ -28,7 +28,7 @@ namespace Dupples_finder_UI
                 }
             }
 
-            pathes = DirSearch(rootFolder, ".jpg", ".png");
+            pathes = DirSearch(rootFolder, ".jpg", ".png", ".jpeg");
 
             return true;
         }
@@ -107,7 +107,7 @@ namespace Dupples_finder_UI
             {
                 foreach (string f in Directory.GetFiles(sDir))
                 {
-                    if (types.Any(o => o.Equals(Path.GetExtension(f))))
+                    if (types.Any(o => o.Equals(Path.GetExtension(f), StringComparison.InvariantCultureIgnoreCase)))
                     {
                         list.Add(f);
                     }

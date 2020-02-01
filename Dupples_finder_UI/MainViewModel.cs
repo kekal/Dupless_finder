@@ -1,12 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
+using System.IO;
 using System.Windows;
 using System.Linq;
 using System.Windows.Media.Imaging;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Media;
+using OpenCvSharp;
 using Timer = System.Threading.Timer;
 
 namespace Dupples_finder_UI
@@ -302,7 +305,7 @@ namespace Dupples_finder_UI
         {
             Dispatcher?.Invoke(() =>
             {
-                var temp = _matches.Select(match => new ImagePair(ThumbnailSize)
+                var temp = _matches?.Select(match => new ImagePair(ThumbnailSize)
                 {
                     Image1 = DataCollection.FirstOrDefault(im => im.FilePath == match.Name1),
                     Image2 = DataCollection.FirstOrDefault(im => im.FilePath == match.Name2),
@@ -336,16 +339,27 @@ namespace Dupples_finder_UI
 
         public void Openview(string filePath)
         {
-            Uri.TryCreate(filePath, UriKind.Absolute, out Uri uri);
             try
             {
-                CurrentImageView = new BitmapImage(uri);
+                if (!File.Exists(filePath))
+                {
+                    return;
+                }
+
+                var previewImage = new BitmapImage();
+                var sourceMat = new Mat(filePath);
+                previewImage.BeginInit();
+                previewImage.StreamSource = sourceMat.ToMemoryStream(".jpg");
+                previewImage.EndInit();
+                previewImage.Freeze();
+                sourceMat.Release();
+
+                CurrentImageView = previewImage;
             }
             catch (Exception e)
             {
                 MessageBox.Show(e.Message);
             }
-            
         }
     }
 }
