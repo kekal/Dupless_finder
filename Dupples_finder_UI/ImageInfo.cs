@@ -3,9 +3,11 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using OpenCvSharp;
+using Size = OpenCvSharp.Size;
 
 namespace Dupples_finder_UI
 {
@@ -89,7 +91,17 @@ namespace Dupples_finder_UI
                 MainViewModel.Inst.Openview(FilePath);
             });
 
-            ImageClick = new RelayCommand(() => Process.Start(FilePath));
+            ImageClick = new RelayCommand(() =>
+            {
+                try
+                {
+                    Process.Start(FilePath);
+                }
+                catch (Exception e)
+                {
+                    MessageBox.Show(e.Message);
+                }
+            });
         }
 
         /// <summary> Lazy container for <c>Image</c> property </summary>
