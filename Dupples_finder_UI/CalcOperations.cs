@@ -74,13 +74,13 @@ namespace Dupples_finder_UI
     {
         public CalcOperations(MainViewModel vm) : base(vm) {}
 
-        public ConcurrentDictionary<string, MatOfFloat> CalcSiftHashes(IEnumerable<ImageInfo> infos, out Task result, int thumbSize = 100)
+        public ConcurrentDictionary<string, Mat> CalcSiftHashes(IEnumerable<ImageInfo> infos, out Task result, int thumbSize = 100)
         {
             Trace.WriteLine("CalcSiftHashes started");
 
             EnablePublishingProgress();
 
-            var hashesDict = new ConcurrentDictionary<string, MatOfFloat>();
+            var hashesDict = new ConcurrentDictionary<string, Mat>();
 
             var tasks = new List<Task>();
             foreach (ImageInfo info in infos)

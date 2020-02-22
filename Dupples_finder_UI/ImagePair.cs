@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
+using OpenCvSharp;
 
 namespace Dupples_finder_UI
 {
@@ -8,8 +11,7 @@ namespace Dupples_finder_UI
         public static readonly DependencyProperty ThumbnailSizeProperty = DependencyProperty.Register("ThumbnailSize", typeof(ushort), typeof(ImagePair), new PropertyMetadata(default(ushort)));
 
         public double Match { private get; set; }
-        public float[] MatchPoints { get; set; }
-        public string MatchString => Match.ToString("F");
+        public string BestDistance => Match.ToString("F");
 
         public ImageInfo Image1 { get; set; }
 

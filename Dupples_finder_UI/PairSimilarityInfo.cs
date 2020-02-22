@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using OpenCvSharp;
 
 namespace Dupples_finder_UI
 {
@@ -7,14 +10,13 @@ namespace Dupples_finder_UI
         public readonly string Name1;
         public readonly string Name2;
         public readonly double Match;
-        public readonly float[] MatchPoints;
+        public readonly List<DMatch> MatchPoints;
 
         public PairSimilarityInfo(string name1, string name2, double match)
         {
             Name1 = name1;
             Name2 = name2;
             Match = match;
-            MatchPoints = matchPoints;
         }
 
         public bool Equals(PairSimilarityInfo other)
@@ -29,7 +31,7 @@ namespace Dupples_finder_UI
 
         public override string ToString()
         {
-            return "\n= \n" + Name1 + " \n " + Name2 + "\n has best homogenized feature offset \n" + Match + " \n==\n";
+            return "\n= \n" + Name1 + " \n " + Name2 + "\n has best homogenized feature offset \n" + MatchPoints.FirstOrDefault().Distance + " \n==\n";
         }
     }
 }

@@ -309,7 +309,6 @@ namespace Dupples_finder_UI
                     Image1 = DataCollection.FirstOrDefault(im => im.FilePath == match.Name1),
                     Image2 = DataCollection.FirstOrDefault(im => im.FilePath == match.Name2),
                     Match = match.Match,
-                    MatchPoints = match.MatchPoints
                 }).ToList();
 
                 LoadingOperations.LoadCollectionDupesToMemory(Inst, temp);
