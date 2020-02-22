@@ -304,7 +304,7 @@ namespace Dupples_finder_UI
         {
             Dispatcher?.Invoke(() =>
             {
-                var temp = _matches?.Select(match => new ImagePair(ThumbnailSize)
+                var temp = _matches?.Take(DataCollection.Count).Select(match => new ImagePair(ThumbnailSize)
                 {
                     Image1 = DataCollection.FirstOrDefault(im => im.FilePath == match.Name1),
                     Image2 = DataCollection.FirstOrDefault(im => im.FilePath == match.Name2),
