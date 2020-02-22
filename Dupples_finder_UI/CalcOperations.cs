@@ -89,7 +89,7 @@ namespace Dupples_finder_UI
                 {
                     Thread.CurrentThread.Priority = ThreadPriority.Lowest;
 
-                    Thread.Sleep(1);
+                    //Thread.Sleep(1);
 
                     //var mem = new MemoryStream();
 
@@ -171,23 +171,23 @@ namespace Dupples_finder_UI
             var tasks = new List<Task>();
             var hashes = hasheDict.ToArray();
 
-            for (var j = 0; j < hashes.Length; j++)
+            for (int j = 0; j < hashes.Length; j++)
             {
+                var j1 = j;
                 for (var i = j + 1; i < hashes.Length; i++)
                 {
                     if (hashes[j].Key == hashes[i].Key)
                     {
                         continue;
                     }
-                    //Thread.Sleep(1);
-
                     var i1 = i;
-                    var j1 = j;
+
                     var task = new Task(() =>
                     {
+                        //Thread.Sleep(1);
                         Thread.CurrentThread.Priority = ThreadPriority.Lowest;
 
-                        var linearFactors = CalcLinearFactors(hashes, j1, i1, out float[] matchPoints);
+                        double similarity = CalcSimilarity((hashes[j1], hashes[i1]));
 
                         similarities.Add(new PairSimilarityInfo(hashes[j1].Key, hashes[i1].Key, similarity));
 
@@ -207,12 +207,25 @@ namespace Dupples_finder_UI
             Task.WaitAll(tasks.ToArray());
 
             DisiblePublishingProgress();
-            return matchList.Where(o1 => o1.Match < 1000000).OrderBy(o => Math.Abs(o.Match));
+            return similarities.OrderByDescending(o => o.Match);
         }
 
-        private static Tuple<double, double> CalcLinearFactors(KeyValuePair<string, MatOfFloat>[] hashArray, int j, int i, out float[] matchPoints)
+        private static double CalcSimilarity((KeyValuePair<string, Mat>, KeyValuePair<string, Mat>) pairOfHashes)
         {
             Thread.CurrentThread.Priority = ThreadPriority.Lowest;
+
+
+            Mat image1 = pairOfHashes.Item1.Value.Resize(new OpenCvSharp.Size(64, 64));
+            Mat image2 = pairOfHashes.Item2.Value.Resize(new OpenCvSharp.Size(64, 64));
+
+            var result =  GetPSNR(image1, image2);
+
+            image1.Release();
+            image2.Release();
+            return result;
+
+
+
             var matchers = new List<DescriptorMatcher>
             {
                 new BFMatcher(NormTypes.L2SQR, crossCheck: true),
@@ -221,38 +234,71 @@ namespace Dupples_finder_UI
                 new FlannBasedMatcher()
             };
 
-            List<float> bfMatches = null;
+            DMatch[][] matches = { };
             foreach (var matcher in matchers)
             {
                 try
                 {
-                    bfMatches = matcher.Match(hashArray[j].Value, hashArray[i].Value).OrderBy(o => o.Distance).Take(10).Select(o => o.Distance).ToList();
+                    matches = matcher.KnnMatch(pairOfHashes.Item1.Value, pairOfHashes.Item2.Value, 2);
                     break;
                 }
                 catch {}
             }
+           
+            
 
-            if (bfMatches == null || bfMatches.Count < 2)
+            var goodMatches = new List<DMatch>();
+            double ratio_thresh = 0.9;
+            foreach (DMatch[] match in matches)
             {
-                bfMatches = new List<float> {float.MaxValue, float.MaxValue};
-                Trace.WriteLine($"All Flann matchers failed:\n\t{hashArray[j].Key}\n\t{hashArray[i].Key}");
+                if (match.Length > 1 && match[0].Distance < ratio_thresh * match[1].Distance)
+                {
+                    goodMatches.Add(match[0]);
+                }
+            }
+
+
+            if (matches.Length < 2)
+            {
+                matches = new List<DMatch[]> { new[] {DMatch.Empty(), DMatch.Empty()}}.ToArray();
+                Trace.WriteLine($"All Flann matchers failed:\n\t{pairOfHashes.Item1.Key}\n\t{pairOfHashes.Item2.Key}");
             }
 
             matchers.ForEach(m => m.Dispose());
 
-            matchPoints = bfMatches.ToArray();
+            return 1000.0 / goodMatches.Count;
+        }
 
-            var xes = new List<double>();
-            var yes = new List<double>();
+        private static double GetPSNR(Mat image1,  Mat image2)
+        {
+            var s1 = new Mat();
+            Cv2.Absdiff(image1, image2, s1);      // |I1 - I2|
 
-            for (int k = 0; k < matchPoints.Length; k++)
+            var s2 = new Mat();
+            s1.ConvertTo(s2, MatType.CV_32F);     // cannot make a square on 8 bits
+            s1.Release();
+            MatExpr s3 = s2.Mul(s2);                  // |I1 - I2|^2
+
+            s2.Release();
+
+            Scalar s = Cv2.Sum(s3);               // sum elements per channel
+            s3.Dispose();
+
+
+            double sse = s.Val0 + s.Val1 + s.Val2; // sum channels
+
+            if (sse <= 1e-10)
             {
-                xes.Add(k);
-                yes.Add(matchPoints[k]);
+                return 0;
             }
 
-            var linearFactors = MathNet.Numerics.Fit.Line(xes.ToArray(), yes.ToArray());
-            return linearFactors;
+            double mse = sse / (image1.Channels() * image1.Total());
+            double psnr = 10.0 * Math.Log10(255 * 255 / mse);
+            image1.Release();
+            image2.Release();
+
+            return psnr;
         }
+
     }
 }
