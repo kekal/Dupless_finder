@@ -57,7 +57,7 @@ namespace Dupples_finder_UI
         #region Fields
 
         //internal ConcurrentDictionary<string, MatOfFloat> _hashesDict;
-        private IEnumerable<Result> _matches;
+        private IEnumerable<PairSimilarityInfo> _matches;
 
         // ==================================================================================================================
 

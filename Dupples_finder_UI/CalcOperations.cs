@@ -164,11 +164,10 @@ namespace Dupples_finder_UI
             return hashesDict;
         }
 
-        public IEnumerable<Result> CreateMatchCollection(IDictionary<string, MatOfFloat> hasheDict)
+        public IEnumerable<PairSimilarityInfo> CreateMatchCollection(IDictionary<string, Mat> hasheDict)
         {
             EnablePublishingProgress();
-            var matchList = new ConcurrentBag<Result>();
-
+            var similarities = new ConcurrentBag<PairSimilarityInfo>();
             var tasks = new List<Task>();
             var hashes = hasheDict.ToArray();
 
@@ -190,7 +189,7 @@ namespace Dupples_finder_UI
 
                         var linearFactors = CalcLinearFactors(hashes, j1, i1, out float[] matchPoints);
 
-                        matchList.Add(new Result(hashes[j1].Key, hashes[i1].Key, linearFactors.Item1, matchPoints));
+                        similarities.Add(new PairSimilarityInfo(hashes[j1].Key, hashes[i1].Key, similarity));
 
                         UpdateIterationsCount();
                     });

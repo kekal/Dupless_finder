@@ -111,7 +111,7 @@
     <Compile Include="LoadingOperations.cs" />
     <Compile Include="MouseWheelGesture.cs" />
     <Compile Include="RelayCommand.cs" />
-    <Compile Include="Result.cs" />
+    <Compile Include="PairSimilarityInfo.cs" />
     <Page Include="Resources.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>

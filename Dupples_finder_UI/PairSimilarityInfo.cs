@@ -2,14 +2,14 @@ using System;
 
 namespace Dupples_finder_UI
 {
-    public class Result : IEquatable<Result>
+    public class PairSimilarityInfo : IEquatable<PairSimilarityInfo>
     {
         public readonly string Name1;
         public readonly string Name2;
         public readonly double Match;
         public readonly float[] MatchPoints;
 
-        public Result(string name1, string name2, double match, float[] matchPoints)
+        public PairSimilarityInfo(string name1, string name2, double match)
         {
             Name1 = name1;
             Name2 = name2;
@@ -17,10 +17,7 @@ namespace Dupples_finder_UI
             MatchPoints = matchPoints;
         }
 
-        
-
-
-        public bool Equals(Result other)
+        public bool Equals(PairSimilarityInfo other)
         {
             if (other == null) return false;
 
