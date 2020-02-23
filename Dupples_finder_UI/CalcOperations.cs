@@ -74,13 +74,13 @@ namespace Dupples_finder_UI
     {
         public CalcOperations(MainViewModel vm) : base(vm) {}
 
-        public ConcurrentDictionary<string, Mat> CalcSiftHashes(IEnumerable<ImageInfo> infos, out Task result, int thumbSize = 100)
+        public ConcurrentDictionary<string, MatOfFloat> CalcSiftHashes(IEnumerable<ImageInfo> infos, out Task result, int thumbSize = 100)
         {
             Trace.WriteLine("CalcSiftHashes started");
 
             EnablePublishingProgress();
 
-            var hashesDict = new ConcurrentDictionary<string, Mat>();
+            var hashesDict = new ConcurrentDictionary<string, MatOfFloat>();
 
             var tasks = new List<Task>();
             foreach (ImageInfo info in infos)
@@ -126,7 +126,7 @@ namespace Dupples_finder_UI
                     //var siftPoints = SURF.Create(400);
                     SIFT siftPoints = SIFT.Create();
 
-                    var descriptors = new MatOfFloat();
+                    MatOfFloat descriptors = new MatOfFloat();
 
                     //var keypoints = siftPoints.Detect(info.StoredMat).ToArray();
                     //siftPoints.Compute(info.StoredMat, ref keypoints, descriptors);
@@ -135,6 +135,13 @@ namespace Dupples_finder_UI
                     Mat resized = info.StoredMat.Resize(new OpenCvSharp.Size(0, 0), scale, scale, InterpolationFlags.Area);
                     siftPoints.DetectAndCompute(resized, null, out KeyPoint[] keypoints, descriptors);
                     resized.Release();
+
+                    if (!ValidateDescriptor(descriptors))
+                    {
+                        descriptors.Release();
+                        descriptors = new MatOfFloat(thumbSize, thumbSize);
+                    }
+                    
 
                     hashesDict.TryAdd(info.FilePath, descriptors);
 
@@ -159,12 +166,15 @@ namespace Dupples_finder_UI
             result = Task.WhenAll(tasks.ToArray());
             result.ContinueWith(o => DisiblePublishingProgress());
 
-            
-
             return hashesDict;
         }
 
-        public IEnumerable<PairSimilarityInfo> CreateMatchCollection(IDictionary<string, Mat> hasheDict)
+        private bool ValidateDescriptor(MatOfFloat descriptors)
+        {
+            return descriptors.Width > 0 && descriptors.Height > 0;
+        }
+
+        public IEnumerable<PairSimilarityInfo> CreateMatchCollection(IDictionary<string, MatOfFloat> hasheDict)
         {
             EnablePublishingProgress();
             var similarities = new ConcurrentBag<PairSimilarityInfo>();
@@ -210,21 +220,19 @@ namespace Dupples_finder_UI
             return similarities.OrderByDescending(o => o.Match);
         }
 
-        private static double CalcSimilarity((KeyValuePair<string, Mat>, KeyValuePair<string, Mat>) pairOfHashes)
+        private static double CalcSimilarity((KeyValuePair<string, MatOfFloat>, KeyValuePair<string, MatOfFloat>) pairOfHashes)
         {
             Thread.CurrentThread.Priority = ThreadPriority.Lowest;
-
 
             Mat image1 = pairOfHashes.Item1.Value.Resize(new OpenCvSharp.Size(64, 64));
             Mat image2 = pairOfHashes.Item2.Value.Resize(new OpenCvSharp.Size(64, 64));
 
-            var result =  GetPSNR(image1, image2);
+            var result = GetPSNR(image1, image2);
 
             image1.Release();
             image2.Release();
+
             return result;
-
-
 
             var matchers = new List<DescriptorMatcher>
             {
@@ -269,31 +277,33 @@ namespace Dupples_finder_UI
             return 1000.0 / goodMatches.Count;
         }
 
-        private static double GetPSNR(Mat image1,  Mat image2)
+        private static double GetPSNR(Mat image1, Mat image2)
         {
-            var s1 = new Mat();
-            Cv2.Absdiff(image1, image2, s1);      // |I1 - I2|
+            var difference = new Mat();
+            Cv2.Absdiff(image1, image2, difference);                                    // |I1 - I2|
 
-            var s2 = new Mat();
-            s1.ConvertTo(s2, MatType.CV_32F);     // cannot make a square on 8 bits
-            s1.Release();
-            MatExpr s3 = s2.Mul(s2);                  // |I1 - I2|^2
+            var differenceInfloat = new Mat();
+            difference.ConvertTo(differenceInfloat, MatType.CV_32F);                    // convert difference pixel data to float
 
-            s2.Release();
+            MatExpr squaredDifference = differenceInfloat.Mul(differenceInfloat);       // difference^2
 
-            Scalar s = Cv2.Sum(s3);               // sum elements per channel
-            s3.Dispose();
+            Scalar s = Cv2.Sum(squaredDifference);                                      // create float summs for each channel
 
+            double total = s.Val0 + s.Val1 + s.Val2;                                    // sum all channels
 
-            double sse = s.Val0 + s.Val1 + s.Val2; // sum channels
-
-            if (sse <= 1e-10)
+            if (total <= 1e-10)                                                         // if no essential data, return 0
             {
                 return 0;
             }
 
-            double mse = sse / (image1.Channels() * image1.Total());
-            double psnr = 10.0 * Math.Log10(255 * 255 / mse);
+            double mse = total / (image1.Channels() * image1.Total());                  // average squared brightness amount of the pixel (Mean squared error)
+
+            double psnr = 10.0 * Math.Log10(255 * 255 / mse);                           // get back to 0-255 brightness range and calc dB level of maximum image difference (Peak signal-to-noise ratio)
+            
+            
+            difference.Release();
+            differenceInfloat.Release();
+            squaredDifference.Dispose();
             image1.Release();
             image2.Release();
 
