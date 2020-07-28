@@ -178,43 +178,64 @@ namespace Dupples_finder_UI
         {
             EnablePublishingProgress();
             var similarities = new ConcurrentBag<PairSimilarityInfo>();
-            var tasks = new List<Task>();
+            //var tasks = new List<Task>();
             var hashes = hasheDict.ToArray();
 
             for (int j = 0; j < hashes.Length; j++)
             {
-                var j1 = j;
-                for (var i = j + 1; i < hashes.Length; i++)
+                var j1 = j + 1;
+
+                Parallel.For(j1, hashes.Length, new ParallelOptions { MaxDegreeOfParallelism = 8 }, i1 =>
                 {
-                    if (hashes[j].Key == hashes[i].Key)
+                    //Thread.Sleep(1);
+                    if (hashes[j1].Key == hashes[i1].Key)
                     {
-                        continue;
+                        return;
                     }
-                    var i1 = i;
+                    Thread.CurrentThread.Priority = ThreadPriority.Lowest;
 
-                    var task = new Task(() =>
-                    {
-                        //Thread.Sleep(1);
-                        Thread.CurrentThread.Priority = ThreadPriority.Lowest;
+                    double similarity = CalcSimilarity((hashes[j1], hashes[i1]));
+                    //Trace.WriteLine($" {j1} {r1}");
+                    similarities.Add(new PairSimilarityInfo(hashes[j1], hashes[i1], similarity));
 
-                        double similarity = CalcSimilarity((hashes[j1], hashes[i1]));
+                    //UpdateIterationsCount();
+                });
 
-                        similarities.Add(new PairSimilarityInfo(hashes[j1].Key, hashes[i1].Key, similarity));
+                #region test
 
-                        UpdateIterationsCount();
-                    });
+                //for (var i = j + 1; i < hashes.Length; i++)
+                //{
+                //    if (hashes[j].Key == hashes[i].Key)
+                //    {
+                //        continue;
+                //    }
+                //    var i1 = i;
 
-                    tasks.Add(task);
-                }
+                //    var task = new Task(() =>
+                //    {
+                //        //Thread.Sleep(1);
+                //        Thread.CurrentThread.Priority = ThreadPriority.Lowest;
+
+                //        //double similarity = CalcSimilarity((hashes[j1], hashes[i1]));
+
+                //        //similarities.Add(new PairSimilarityInfo(hashes[j1].Key, hashes[i1].Key, similarity));
+
+                //        UpdateIterationsCount();
+                //    });
+
+                //    tasks.Add(task);
+                //} 
+
+                #endregion
             }
-            SetProgressIterationsScope(tasks);
+            //SetProgressIterationsScope(tasks);
 
-            foreach (var t in tasks)
-            {
-                t.Start();
-            }
+            //foreach (var t in tasks)
+            //{
+            //    t.Start();
+            //}
 
-            Task.WaitAll(tasks.ToArray());
+            //Task.WaitAll(tasks.ToArray());
 
             DisiblePublishingProgress();
             return similarities.OrderByDescending(o => o.Match);
@@ -223,14 +244,16 @@ namespace Dupples_finder_UI
         private static double CalcSimilarity((KeyValuePair<string, MatOfFloat>, KeyValuePair<string, MatOfFloat>) pairOfHashes)
         {
             Thread.CurrentThread.Priority = ThreadPriority.Lowest;
+            double result = -1;
 
-            Mat image1 = pairOfHashes.Item1.Value.Resize(new OpenCvSharp.Size(64, 64));
-            Mat image2 = pairOfHashes.Item2.Value.Resize(new OpenCvSharp.Size(64, 64));
+            using (Mat image1 = pairOfHashes.Item1.Value.Resize(new OpenCvSharp.Size(64, 64)))
+            using (Mat image2 = pairOfHashes.Item2.Value.Resize(new OpenCvSharp.Size(64, 64)))
+            {
+                result = GetPSNR(image1, image2);
 
-            var result = GetPSNR(image1, image2);
-
-            image1.Release();
-            image2.Release();
+                //image1.Release();
+                //image2.Release();
+            }
 
             return result;
 

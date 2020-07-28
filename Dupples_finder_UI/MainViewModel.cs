@@ -240,7 +240,13 @@ namespace Dupples_finder_UI
                 //ClearCollectionCache();
                 var hashesDict = _calcOperations.CalcSiftHashes(DataCollection, out Task result);
                 result.ContinueWith(e1 => _matches = _calcOperations.CreateMatchCollection(hashesDict).Distinct())
-                      .ContinueWith(e2 => { PopulateDupes(); });
+                      .ContinueWith(e2 => { PopulateDupes(); })
+                      .ContinueWith(e3 =>
+                      {
+                          GC.Collect(0, GCCollectionMode.Forced);
+                          GC.Collect(1, GCCollectionMode.Forced);
+                          GC.Collect(2, GCCollectionMode.Forced);
+                      });
             });
 
             CloseView = new RelayCommand(()=>
@@ -306,8 +312,8 @@ namespace Dupples_finder_UI
             {
                 var temp = _matches?.Take(DataCollection.Count).Select(match => new ImagePair(ThumbnailSize)
                 {
-                    Image1 = DataCollection.FirstOrDefault(im => im.FilePath == match.Name1),
-                    Image2 = DataCollection.FirstOrDefault(im => im.FilePath == match.Name2),
+                    Image1 = DataCollection.FirstOrDefault(im => im.FilePath == match.Hash1.Key),
+                    Image2 = DataCollection.FirstOrDefault(im => im.FilePath == match.Hash2.Key),
                     Match = match.Match,
                 }).ToList();
 
