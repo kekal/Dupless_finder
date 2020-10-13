@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -64,9 +65,14 @@ namespace Dupples_finder_UI
             //Thread.Sleep(1);
         }
 
-        protected void SetProgressIterationsScope(List<Task> elements)
+        protected void SetProgressIterationsScope(ICollection elements)
         {
-            _iterations[0] = elements.Count;
+            SetProgressIterationsScope(elements.Count);
+        }
+
+        protected void SetProgressIterationsScope(int count)
+        {
+            _iterations[0] = count;
         }
     }
 
@@ -180,7 +186,7 @@ namespace Dupples_finder_UI
             var similarities = new ConcurrentBag<PairSimilarityInfo>();
             //var tasks = new List<Task>();
             var hashes = hasheDict.ToArray();
-
+            SetProgressIterationsScope(hashes.Length * hashes.Length);
             for (int j = 0; j < hashes.Length; j++)
             {
                 var j1 = j + 1;
@@ -198,9 +204,9 @@ namespace Dupples_finder_UI
                     //Trace.WriteLine($" {j1} {r1}");
                     similarities.Add(new PairSimilarityInfo(hashes[j1], hashes[i1], similarity));
 
-                    //UpdateIterationsCount();
-                });
+                    UpdateIterationsCount();
 
+                });
                 #region test
 
                 //for (var i = j + 1; i < hashes.Length; i++)
@@ -228,7 +234,7 @@ namespace Dupples_finder_UI
 
                 #endregion
             }
-            //SetProgressIterationsScope(tasks);
+            
 
             //foreach (var t in tasks)
             //{
@@ -244,18 +250,18 @@ namespace Dupples_finder_UI
         private static double CalcSimilarity((KeyValuePair<string, MatOfFloat>, KeyValuePair<string, MatOfFloat>) pairOfHashes)
         {
             Thread.CurrentThread.Priority = ThreadPriority.Lowest;
-            double result = -1;
+            //double result = -1;
 
-            using (Mat image1 = pairOfHashes.Item1.Value.Resize(new OpenCvSharp.Size(64, 64)))
-            using (Mat image2 = pairOfHashes.Item2.Value.Resize(new OpenCvSharp.Size(64, 64)))
-            {
-                result = GetPSNR(image1, image2);
+            //using (Mat image1 = pairOfHashes.Item1.Value.Resize(new OpenCvSharp.Size(64, 64)))
+            //using (Mat image2 = pairOfHashes.Item2.Value.Resize(new OpenCvSharp.Size(64, 64)))
+            //{
+            //    result = GetPSNR(image1, image2);
 
-                //image1.Release();
-                //image2.Release();
-            }
+            //    //image1.Release();
+            //    //image2.Release();
+            //}
 
-            return result;
+            //return result;
 
             var matchers = new List<DescriptorMatcher>
             {
