@@ -10,3 +10,7 @@
 *.csproj.user
 **/bin/**
 **/obj/**
+*.db
+*.db-shm
+*.db-wal
+/.idea/*
