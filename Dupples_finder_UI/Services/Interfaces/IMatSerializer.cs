@@ -1,10 +1,9 @@
 using OpenCvSharp;
 
-namespace Dupples_finder_UI.Services.Interfaces
+namespace Dupples_finder_UI.Services.Interfaces;
+
+public interface IMatSerializer
 {
-    public interface IMatSerializer
-    {
-        byte[] Serialize(Mat mat);
-        Mat Deserialize(byte[] data, int rows, int cols);
-    }
+    Mat Deserialize(byte[] data, int rows, int cols);
+    byte[] Serialize(Mat mat);
 }

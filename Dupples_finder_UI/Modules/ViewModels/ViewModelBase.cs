@@ -2,41 +2,40 @@ using System;
 using Prism.Events;
 using Prism.Mvvm;
 
-namespace Dupples_finder_UI.Modules.ViewModels
+namespace Dupples_finder_UI.Modules.ViewModels;
+
+public abstract class ViewModelBase : BindableBase, IDisposable
 {
-    public abstract class ViewModelBase : BindableBase, IDisposable
+    private bool _disposed;
+
+    protected ViewModelBase()
     {
-        protected IEventAggregator EventAggregator { get; }
+        DefineCommands();
+        DefineEvents();
+    }
 
-        protected ViewModelBase()
+    protected ViewModelBase(IEventAggregator eventAggregator)
+    {
+        EventAggregator = eventAggregator;
+        DefineCommands();
+        DefineEvents();
+    }
+
+    protected IEventAggregator EventAggregator { get; }
+
+    protected virtual void DefineCommands() { }
+
+    protected virtual void DefineEvents() { }
+
+    protected virtual void Dispose(bool disposing) { }
+
+    public void Dispose()
+    {
+        if (!_disposed)
         {
-            DefineCommands();
-            DefineEvents();
-        }
-
-        protected ViewModelBase(IEventAggregator eventAggregator)
-        {
-            EventAggregator = eventAggregator;
-            DefineCommands();
-            DefineEvents();
-        }
-
-        protected virtual void DefineCommands() { }
-
-        protected virtual void DefineEvents() { }
-
-        private bool _disposed;
-
-        protected virtual void Dispose(bool disposing) { }
-
-        public void Dispose()
-        {
-            if (!_disposed)
-            {
-                Dispose(true);
-                _disposed = true;
-                GC.SuppressFinalize(this);
-            }
+            Dispose(true);
+            _disposed = true;
+            GC.SuppressFinalize(this);
         }
     }
 }

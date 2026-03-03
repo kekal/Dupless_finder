@@ -3,39 +3,35 @@ using System.Diagnostics;
 using System.Windows.Input;
 using Dupples_finder_UI.Modules.ViewModels;
 
-namespace Dupples_finder_UI.Modules.Views
+namespace Dupples_finder_UI.Modules.Views;
+
+public partial class MainWindow
 {
-    /// <summary>
-    /// Interaction logic for MainWindow.xaml
-    /// </summary>
-    public partial class MainWindow
+    public MainWindow()
     {
-        public MainWindow()
+        try
         {
-            try
-            {
-                InitializeComponent();
-            }
-            catch (Exception e)
-            {
-                Trace.WriteLine(e.Message);
-            }
+            InitializeComponent();
         }
-
-        private void PreviewButton_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        catch (Exception e)
         {
-            if (DataContext is MainViewModel vm)
-            {
-                vm.ShowAlternatePreview();
-            }
+            Trace.WriteLine(e.Message);
         }
+    }
 
-        private void PreviewButton_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    private void PreviewButton_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (DataContext is MainViewModel vm)
         {
-            if (DataContext is MainViewModel vm)
-            {
-                vm.RestorePrimaryPreview();
-            }
+            vm.ShowAlternatePreview();
+        }
+    }
+
+    private void PreviewButton_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (DataContext is MainViewModel vm)
+        {
+            vm.RestorePrimaryPreview();
         }
     }
 }

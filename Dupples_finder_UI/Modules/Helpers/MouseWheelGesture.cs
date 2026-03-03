@@ -1,55 +1,50 @@
 using System.Windows.Input;
 
-namespace Dupples_finder_UI.Modules.Helpers
+namespace Dupples_finder_UI.Modules.Helpers;
+
+public class MouseWheelGesture : MouseGesture
 {
-    public class MouseWheelGesture : MouseGesture
+    private MouseWheelGesture() : base(MouseAction.WheelClick)
     {
-        public static MouseWheelGesture Down => new()
+    }
+
+    private enum WheelDirection
+    {
+        None,
+        Up,
+        Down
+    }
+
+    public static MouseWheelGesture Down => new()
+    {
+        Direction = WheelDirection.Down
+    };
+
+    public static MouseWheelGesture Up => new()
+    {
+        Direction = WheelDirection.Up
+    };
+
+    private WheelDirection Direction { get; init; }
+
+    public override bool Matches(object targetElement, InputEventArgs inputEventArgs)
+    {
+        if (!base.Matches(targetElement, inputEventArgs))
         {
-            Direction = WheelDirection.Down
+            return false;
+        }
+
+        if (inputEventArgs is not MouseWheelEventArgs args)
+        {
+            return false;
+        }
+
+        return Direction switch
+        {
+            WheelDirection.None => args.Delta == 0,
+            WheelDirection.Up => args.Delta > 0,
+            WheelDirection.Down => args.Delta < 0,
+            _ => false
         };
-
-        public static MouseWheelGesture Up => new()
-        {
-            Direction = WheelDirection.Up
-        };
-
-        private MouseWheelGesture() : base(MouseAction.WheelClick)
-        {
-        }
-
-        private WheelDirection Direction { get; init; }
-
-        public override bool Matches(object targetElement, InputEventArgs inputEventArgs)
-        {
-            if (!base.Matches(targetElement, inputEventArgs))
-            {
-                return false;
-            }
-
-            if (!(inputEventArgs is MouseWheelEventArgs args))
-            {
-                return false;
-            }
-
-            switch (Direction)
-            {
-                case WheelDirection.None:
-                    return args.Delta == 0;
-                case WheelDirection.Up:
-                    return args.Delta > 0;
-                case WheelDirection.Down:
-                    return args.Delta < 0;
-                default:
-                    return false;
-            }
-        }
-
-        private enum WheelDirection
-        {
-            None,
-            Up,
-            Down,
-        }
     }
 }

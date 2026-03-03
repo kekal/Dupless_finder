@@ -5,19 +5,18 @@ using System.Threading.Tasks;
 using Dupples_finder_UI.DTO;
 using OpenCvSharp;
 
-namespace Dupples_finder_UI.Services.Interfaces
-{
-    public interface ICalcOperations
-    {
-        ConcurrentDictionary<string, Mat> CalcSiftHashes(
-            IEnumerable<ImageInfo> infos,
-            IPhotoDbService dbService,
-            IProgress<double> progress,
-            out Task result,
-            int thumbSize = 256);
+namespace Dupples_finder_UI.Services.Interfaces;
 
-        IEnumerable<PairSimilarityInfo> CreateMatchCollection(
-            IDictionary<string, Mat> hashDict,
-            IProgress<double> progress);
-    }
+public interface ICalcOperations
+{
+    ConcurrentDictionary<string, Mat> CalcSiftHashes(
+        IEnumerable<ImageInfo> infos,
+        IPhotoDbService dbService,
+        IProgress<double> progress,
+        out Task result,
+        int thumbSize = 256);
+
+    IEnumerable<PairSimilarityInfo> CreateMatchCollection(
+        IDictionary<string, Mat> hashDict,
+        IProgress<double> progress);
 }

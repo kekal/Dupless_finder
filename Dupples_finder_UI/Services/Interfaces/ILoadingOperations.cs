@@ -1,9 +1,8 @@
 using System.Collections.Generic;
 
-namespace Dupples_finder_UI.Services.Interfaces
+namespace Dupples_finder_UI.Services.Interfaces;
+
+public interface ILoadingOperations
 {
-    public interface ILoadingOperations
-    {
-        bool GetAllPaths(out IEnumerable<string> paths, string rootFolder);
-    }
+    bool GetAllPaths(out IEnumerable<string> paths, string rootFolder);
 }

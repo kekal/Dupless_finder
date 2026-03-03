@@ -5,62 +5,60 @@ using Dupples_finder_UI.Events;
 using Prism.Commands;
 using Prism.Events;
 
-namespace Dupples_finder_UI.Modules.Helpers
+namespace Dupples_finder_UI.Modules.Helpers;
+
+public class ImagePair : DependencyObject, IDisposable
 {
-    public class ImagePair : DependencyObject, IDisposable
+    public static readonly DependencyProperty ThumbnailSizeProperty = DependencyProperty.Register(nameof(ThumbnailSize), typeof(ushort), typeof(ImagePair), new PropertyMetadata(default(ushort)));
+
+    public ImagePair(ushort thumbnailSize, IEventAggregator eventAggregator)
     {
-        public static readonly DependencyProperty ThumbnailSizeProperty = DependencyProperty.Register(nameof(ThumbnailSize), typeof(ushort), typeof(ImagePair), new PropertyMetadata(default(ushort)));
+        ThumbnailSize = thumbnailSize;
 
-        public double Match { private get; set; }
-        public string BestDistance => Match.ToString("F");
-
-        public ImageInfo Image1 { get; set; }
-
-        public ImageInfo Image2 { get; set; }
-
-        /// <summary>Opens Image1 in preview with Image2 as the alternate (mouse-press) image.</summary>
-        public DelegateCommand Image1DoubleClick { get; private set; }
-
-        /// <summary>Opens Image2 in preview with Image1 as the alternate (mouse-press) image.</summary>
-        public DelegateCommand Image2DoubleClick { get; private set; }
-
-        public ushort ThumbnailSize
+        Image1DoubleClick = new DelegateCommand(() =>
         {
-            get => (ushort) GetValue(ThumbnailSizeProperty);
-            set => SetValue(ThumbnailSizeProperty, value);
-        }
+            eventAggregator?.GetEvent<OpenImagePreviewEvent>()
+                .Publish(new OpenImagePreviewPayload
+                {
+                    FilePath = Image1?.FilePath,
+                    AlternatePath = Image2?.FilePath
+                });
+        });
 
-        public ImagePair(ushort thumbnailSize, IEventAggregator eventAggregator)
+        Image2DoubleClick = new DelegateCommand(() =>
         {
-            ThumbnailSize = thumbnailSize;
+            eventAggregator?.GetEvent<OpenImagePreviewEvent>()
+                .Publish(new OpenImagePreviewPayload
+                {
+                    FilePath = Image2?.FilePath,
+                    AlternatePath = Image1?.FilePath
+                });
+        });
+    }
 
-            Image1DoubleClick = new DelegateCommand(() =>
-            {
-                eventAggregator?.GetEvent<OpenImagePreviewEvent>()
-                    .Publish(new OpenImagePreviewPayload
-                    {
-                        FilePath = Image1?.FilePath,
-                        AlternatePath = Image2?.FilePath
-                    });
-            });
+    public string BestDistance => Match.ToString("F");
 
-            Image2DoubleClick = new DelegateCommand(() =>
-            {
-                eventAggregator?.GetEvent<OpenImagePreviewEvent>()
-                    .Publish(new OpenImagePreviewPayload
-                    {
-                        FilePath = Image2?.FilePath,
-                        AlternatePath = Image1?.FilePath
-                    });
-            });
-        }
+    public ImageInfo Image1 { get; set; }
 
-        public void Dispose()
-        {
-            Image1?.Dispose();
-            Image2?.Dispose();
-            Image1 = null;
-            Image2 = null;
-        }
+    public DelegateCommand Image1DoubleClick { get; private set; }
+
+    public ImageInfo Image2 { get; set; }
+
+    public DelegateCommand Image2DoubleClick { get; private set; }
+
+    public double Match { private get; set; }
+
+    public ushort ThumbnailSize
+    {
+        get => (ushort) GetValue(ThumbnailSizeProperty);
+        set => SetValue(ThumbnailSizeProperty, value);
+    }
+
+    public void Dispose()
+    {
+        Image1?.Dispose();
+        Image2?.Dispose();
+        Image1 = null;
+        Image2 = null;
     }
 }

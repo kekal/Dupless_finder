@@ -1,29 +1,27 @@
 using System;
 
-namespace Dupples_finder_UI.Modules.Helpers
+namespace Dupples_finder_UI.Modules.Helpers;
+
+public class DisposableObject : IDisposable
 {
-    public class DisposableObject : IDisposable
+    ~DisposableObject()
     {
-        private bool IsDisposed { get; set; }
+        Dispose();
+    }
 
-        public virtual void Dispose()
+    private bool IsDisposed { get; set; }
+
+    protected virtual void Clean()
+    {
+    }
+
+    public virtual void Dispose()
+    {
+        if (!IsDisposed)
         {
-            if (!IsDisposed)
-            {
-                Clean();
-                IsDisposed = true;
-                GC.SuppressFinalize(this);
-            }
-        }
-
-        protected virtual void Clean()
-        {
-        }
-
-
-        ~DisposableObject()
-        {
-            Dispose();
+            Clean();
+            IsDisposed = true;
+            GC.SuppressFinalize(this);
         }
     }
 }
