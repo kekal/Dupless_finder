@@ -37,6 +37,7 @@ public class MainViewModel : ViewModelBase
 
     private IList<ImagePair> _pairDataCollection;
     private readonly ILoadingOperations _loadingOperations;
+    private ImageInfo _previewedImageInfo;
     private ImageSource _alternateImageView;
 
     private ImageSource _currentImageView;
@@ -48,9 +49,18 @@ public class MainViewModel : ViewModelBase
 
     private ObservableCollection<ImageInfo> _imageCollection;
 
+    private readonly Stack<(string OriginalPath, string DeletedPath)> _undoStack = new();
+
     private string _calcProgressText;
 
+    private bool _includeSubfolders;
+
+    private double _scoreThreshold = 200;
+
     private string _statusText = "Ready";
+    private const string DeletedFolderName = ".deleted";
+
+    private CancellationTokenSource _cts;
 
     private Timer _t;
 
@@ -92,6 +102,8 @@ public class MainViewModel : ViewModelBase
     /// <summary>Manually re-run the analysis (SIFT hashing + matching).</summary>
     public AsyncDelegateCommand AnalyzeCommand { get; private set; }
 
+    public DelegateCommand CancelCommand { get; private set; }
+
     public double CalcProgress
     {
         get => _calcProgress;
@@ -115,10 +127,27 @@ public class MainViewModel : ViewModelBase
     public ImageSource CurrentImageView
     {
         get => _currentImageView;
-        set => SetProperty(ref _currentImageView, value);
+        set
+        {
+            if (SetProperty(ref _currentImageView, value))
+            {
+                RaisePropertyChanged(nameof(PreviewDeleteVisibility));
+            }
+        }
     }
 
+    public Visibility PreviewDeleteVisibility => _currentImageView != null ? Visibility.Visible : Visibility.Collapsed;
+
+    public AsyncDelegateCommand<ImageInfo> DeleteImageCommand { get; private set; }
+    public AsyncDelegateCommand DeletePreviewCommand { get; private set; }
+
     public double GridWidth => 2 * ThumbnailSize + 80;
+
+    public bool IncludeSubfolders
+    {
+        get => _includeSubfolders;
+        set => SetProperty(ref _includeSubfolders, value);
+    }
 
     public ObservableCollection<ImageInfo> ImageCollection
     {
@@ -159,6 +188,18 @@ public class MainViewModel : ViewModelBase
         set => SetProperty(ref _previewSize, value);
     }
 
+    public double ScoreThreshold
+    {
+        get => _scoreThreshold;
+        set
+        {
+            if (SetProperty(ref _scoreThreshold, value))
+            {
+                RefilterPairs();
+            }
+        }
+    }
+
     public string StatusText
     {
         get => _statusText;
@@ -172,6 +213,9 @@ public class MainViewModel : ViewModelBase
     }
 
     public ushort ThumbnailSize { get; }
+    public AsyncDelegateCommand UndoCommand { get; private set; }
+
+    public Visibility UndoVisibility => _undoStack.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     public DelegateCommand<double?> ZoomInCommand { get; private set; }
     public DelegateCommand<double?> ZoomOutCommand { get; private set; }
 
@@ -193,6 +237,8 @@ public class MainViewModel : ViewModelBase
             _primaryImageView = primaryImage;
             _alternateImageView = null;
             CurrentImageView = primaryImage;
+            _previewedImageInfo = _dataCollectionFlat.FirstOrDefault(im => im.FilePath == filePath);
+            DeletePreviewCommand.RaiseCanExecuteChanged();
 
             if (primaryImage.PixelHeight > 0)
             {
@@ -233,7 +279,17 @@ public class MainViewModel : ViewModelBase
     {
         OpenCommand = new AsyncDelegateCommand(ExecuteOpenAsync);
         AnalyzeCommand = new AsyncDelegateCommand(ExecuteAnalyzeAsync);
+        CancelCommand = new DelegateCommand(ExecuteCancel, () => _cts != null && !_cts.IsCancellationRequested);
         CloseViewCommand = new DelegateCommand(ExecuteCloseView);
+        DeleteImageCommand = new AsyncDelegateCommand<ImageInfo>(ExecuteDeleteImage, _ => IsLoaded);
+        DeletePreviewCommand = new AsyncDelegateCommand(
+            async ct => { if (_previewedImageInfo != null)
+                {
+                    await ExecuteDeleteImage(_previewedImageInfo, ct);
+                }
+            },
+            () => _previewedImageInfo != null);
+        UndoCommand = new AsyncDelegateCommand(ExecuteUndo, () => _undoStack.Count > 0);
         ZoomInCommand = new DelegateCommand<double?>(ExecuteZoomIn);
         ZoomOutCommand = new DelegateCommand<double?>(ExecuteZoomOut);
     }
@@ -248,6 +304,9 @@ public class MainViewModel : ViewModelBase
     {
         if (disposing)
         {
+            _cts?.Cancel();
+            _cts?.Dispose();
+            _cts = null;
             _t?.Dispose();
             _t = null;
             _dbService?.Dispose();
@@ -276,47 +335,287 @@ public class MainViewModel : ViewModelBase
             return;
         }
 
+        _cts?.Cancel();
+        _cts?.Dispose();
+        _cts = new CancellationTokenSource();
+        CancelCommand.RaiseCanExecuteChanged();
+
         ThumbnailGridVisibility = Visibility.Visible;
         PairGridVisibility = Visibility.Collapsed;
         StatusText = "Starting analysis...";
 
-        await RunAnalysisAsync();
+        try
+        {
+            await RunAnalysisAsync(_cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText = "Analysis cancelled.";
+            IsProgressVisible = Visibility.Collapsed;
+        }
+        finally
+        {
+            CancelCommand.RaiseCanExecuteChanged();
+        }
     }
 
     private void ExecuteCloseView()
     {
         CurrentImageView = null;
+        _previewedImageInfo = null;
+        DeletePreviewCommand?.RaiseCanExecuteChanged();
         PreviewSize = GridWidth;
+    }
+
+    private async Task ExecuteDeleteImage(ImageInfo imageInfo, CancellationToken cancellationToken)
+    {
+        if (imageInfo == null || string.IsNullOrEmpty(imageInfo.FilePath))
+        {
+            return;
+        }
+
+        try
+        {
+            var filePath = imageInfo.FilePath;
+            var directory = Path.GetDirectoryName(filePath);
+            if (directory == null)
+            {
+                return;
+            }
+
+            // File I/O off the UI thread
+            var destPath = await Task.Run(() =>
+            {
+                var deletedDir = Path.Combine(directory, DeletedFolderName);
+                Directory.CreateDirectory(deletedDir);
+
+                var fileName = Path.GetFileName(filePath);
+                var dest = Path.Combine(deletedDir, fileName);
+
+                // Handle name collision in .deleted folder
+                if (File.Exists(dest))
+                {
+                    var nameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
+                    var ext = Path.GetExtension(fileName);
+                    var counter = 1;
+                    do
+                    {
+                        dest = Path.Combine(deletedDir, $"{nameWithoutExt}_{counter}{ext}");
+                        counter++;
+                    } while (File.Exists(dest));
+                }
+
+                File.Move(filePath, dest);
+                return dest;
+            }, cancellationToken);
+
+            _undoStack.Push((filePath, destPath));
+            UndoCommand.RaiseCanExecuteChanged();
+            RaisePropertyChanged(nameof(UndoVisibility));
+
+            // Close preview if showing the deleted image
+            ExecuteCloseView();
+
+            // Remove from thumbnail collection
+            ImageCollection.Remove(imageInfo);
+            _dataCollectionFlat.Remove(imageInfo);
+
+            // Remove all pairs containing this image
+            if (PairDataCollection is List<ImagePair> pairs)
+            {
+                var remaining = pairs
+                    .Where(p => p.Image1?.FilePath != filePath && p.Image2?.FilePath != filePath)
+                    .ToList();
+                PairDataCollection = remaining;
+
+                if (remaining.Count == 0 && PairGridVisibility == Visibility.Visible)
+                {
+                    PairGridVisibility = Visibility.Collapsed;
+                    ThumbnailGridVisibility = Visibility.Visible;
+                    StatusText = "All pairs resolved.";
+                }
+                else
+                {
+                    StatusText = $"{remaining.Count} pairs remaining.";
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Failed to delete image: {ex.Message}");
+        }
+    }
+
+    private void ExecuteCancel()
+    {
+        _cts?.Cancel();
+        StatusText = "Cancelling...";
     }
 
     private async Task ExecuteOpenAsync()
     {
-        if (!_loadingOperations.GetAllPaths(out var paths, string.Empty))
+        // Show folder dialog on UI thread
+        var rootFolder = _loadingOperations.ShowFolderDialog();
+        if (rootFolder == null)
         {
             return;
         }
+
+        // Cancel any previous operation
+        if (_cts != null)
+        {
+            await _cts.CancelAsync();
+            _cts.Dispose();
+        }
+        _cts = new CancellationTokenSource();
+        CancelCommand.RaiseCanExecuteChanged();
+        var ct = _cts.Token;
 
         ThumbnailGridVisibility = Visibility.Visible;
         PairGridVisibility = Visibility.Collapsed;
         PairDataCollection = new List<ImagePair>();
+        IsProgressVisible = Visibility.Visible;
+        CalcProgress = 0;
 
-        var imageList = paths.Select(path => new ImageInfo(path, EventAggregator)).ToList();
-        _dataCollectionFlat = imageList;
+        try
+        {
+            var fileInfos = await ScanFolderAsync(rootFolder, ct);
+            if (fileInfos.Count == 0)
+            {
+                StatusText = "No images found in selected folder.";
+                IsProgressVisible = Visibility.Collapsed;
+                return;
+            }
 
-        var collection = new ObservableCollection<ImageInfo>(imageList);
-        ImageCollection = collection;
+            var imageList = await BuildImageListAsync(fileInfos, ct);
 
-        StatusText = $"Found {imageList.Count} images. Loading thumbnails...";
+            _dataCollectionFlat = imageList;
+            ImageCollection = new ObservableCollection<ImageInfo>(imageList);
 
-        await Task.Run(() => LoadThumbnailsInBackground(imageList));
+            await LoadAllThumbnailsAsync(imageList, ct);
 
-        if (await TryLoadCachedPairsAsync())
+            ct.ThrowIfCancellationRequested();
+
+            if (await TryLoadCachedPairsAsync())
+            {
+                return;
+            }
+
+            StatusText = "Thumbnails loaded. Starting analysis...";
+            await RunAnalysisAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText = "Operation cancelled.";
+            IsProgressVisible = Visibility.Collapsed;
+        }
+        finally
+        {
+            CancelCommand.RaiseCanExecuteChanged();
+        }
+    }
+
+    /// <summary>
+    /// Phase 1: Scans the selected folder for image files in background.
+    /// Returns FileInfo objects with pre-fetched metadata (fast on network shares).
+    /// </summary>
+    private async Task<List<FileInfo>> ScanFolderAsync(string rootFolder, CancellationToken ct)
+    {
+        StatusText = "Scanning folder...";
+        var scanProgress = new Progress<int>(count =>
+        {
+            StatusText = $"Scanning folder... {count} images found";
+        });
+
+        return await Task.Run(() =>
+            _loadingOperations.ScanImageFileInfos(rootFolder, IncludeSubfolders, scanProgress, ct), ct);
+    }
+
+    /// <summary>
+    /// Phase 2: Creates ImageInfo objects from pre-fetched FileInfo metadata in background.
+    /// Uses the FileInfo constructor overload to avoid per-file stat calls on network shares.
+    /// </summary>
+    private async Task<List<ImageInfo>> BuildImageListAsync(List<FileInfo> fileInfos, CancellationToken ct)
+    {
+        var totalFiles = fileInfos.Count;
+        StatusText = $"Reading file info... 0/{totalFiles}";
+        CalcProgress = 0;
+        var ea = EventAggregator;
+
+        return await Task.Run(() =>
+        {
+            var list = new List<ImageInfo>(totalFiles);
+            var progressStep = totalFiles > 0 ? 100.0 / totalFiles : 100.0;
+            var reportInterval = Math.Max(totalFiles / 200, 1);
+
+            for (var i = 0; i < fileInfos.Count; i++)
+            {
+                ct.ThrowIfCancellationRequested();
+                list.Add(new ImageInfo(fileInfos[i], ea));
+
+                if (i % reportInterval == 0 || i == totalFiles - 1)
+                {
+                    var idx = i;
+                    var progress = (i + 1) * progressStep;
+                    Application.Current?.Dispatcher?.BeginInvoke(new Action(() =>
+                    {
+                        CalcProgress = Math.Min(progress, 100.0);
+                        StatusText = $"Reading file info... {idx + 1}/{totalFiles}";
+                    }));
+                }
+            }
+
+            return list;
+        }, ct);
+    }
+
+    /// <summary>
+    /// Phase 3: Loads thumbnails for all images in background with progress reporting.
+    /// </summary>
+    private async Task LoadAllThumbnailsAsync(IList<ImageInfo> imageList, CancellationToken ct)
+    {
+        StatusText = $"Loading thumbnails... 0/{imageList.Count}";
+        await Task.Run(() => LoadThumbnailsInBackground(imageList, ct), ct);
+    }
+
+    private async Task ExecuteUndo()
+    {
+        if (_undoStack.Count == 0)
         {
             return;
         }
 
-        StatusText = "Thumbnails loaded. Starting analysis...";
-        await RunAnalysisAsync();
+        var (originalPath, deletedPath) = _undoStack.Pop();
+        UndoCommand.RaiseCanExecuteChanged();
+
+        try
+        {
+            if (!File.Exists(deletedPath))
+            {
+                StatusText = "Undo failed: deleted file not found.";
+                return;
+            }
+
+            File.Move(deletedPath, originalPath);
+
+            // Re-add the image to the collection
+            var restoredImage = new ImageInfo(originalPath, EventAggregator);
+            _dataCollectionFlat.Add(restoredImage);
+            ImageCollection.Add(restoredImage);
+
+            // Load thumbnail in background
+            await Task.Run(() => restoredImage.LoadThumbnail(_dbService, _thumbnailService));
+
+            // Try to reload cached pairs (will quickly restore pairs from DB hash)
+            await TryLoadCachedPairsAsync();
+
+            StatusText = $"Restored: {Path.GetFileName(originalPath)}";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Undo failed: {ex.Message}");
+        }
     }
 
     private void ExecuteZoomIn(double? p)
@@ -352,19 +651,25 @@ public class MainViewModel : ViewModelBase
     /// Uses DB cache first, then OS Shell API for generation.
     /// Designed to be called from a background thread via Task.Run.
     /// </summary>
-    private void LoadThumbnailsInBackground(IList<ImageInfo> images)
+    private void LoadThumbnailsInBackground(IList<ImageInfo> images, CancellationToken ct = default)
     {
+        var imageCount = images.Count;
+
         Application.Current?.Dispatcher?.BeginInvoke(new Action(() =>
         {
             CalcProgress = 0;
             IsProgressVisible = Visibility.Visible;
         }));
 
-        var progressStep = images.Count > 0 ? 100.0 / images.Count : 100.0;
+        var progressStep = imageCount > 0 ? 100.0 / imageCount : 100.0;
         int[] completed = [0];
 
         Parallel.ForEach(images,
-            new ParallelOptions { MaxDegreeOfParallelism = Math.Max(Environment.ProcessorCount - 1, 1) },
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = Math.Max(Environment.ProcessorCount - 1, 1),
+                CancellationToken = ct
+            },
             info =>
             {
                 Thread.CurrentThread.Priority = ThreadPriority.BelowNormal;
@@ -373,10 +678,15 @@ public class MainViewModel : ViewModelBase
 
                 var done = Interlocked.Increment(ref completed[0]);
                 var progress = done * progressStep;
+
+                if (done % 10 == 0)
+                {
                 Application.Current?.Dispatcher?.BeginInvoke(new Action(() =>
                 {
                     CalcProgress = Math.Min(progress, 100.0);
+                    StatusText = $"Loading thumbnails... {done}/{imageCount}";
                 }));
+                }
             });
 
         Application.Current?.Dispatcher?.BeginInvoke(new Action(() =>
@@ -396,10 +706,8 @@ public class MainViewModel : ViewModelBase
 
     private void PopulateDupes()
     {
-        // Filter out pairs with too few good matches (score > 200 means < 5 matches)
         var temp = _matches?
-            .Where(match => match.Match < 200)
-            .Take(_dataCollectionFlat.Count)
+            .Where(match => match.Match < ScoreThreshold)
             .Select(match => new ImagePair(ThumbnailSize, EventAggregator)
             {
                 Image1 = _dataCollectionFlat.FirstOrDefault(im => im.FilePath == match.Hash1.Key),
@@ -420,10 +728,20 @@ public class MainViewModel : ViewModelBase
         }
     }
 
+    private void RefilterPairs()
+    {
+        if (_matches == null)
+        {
+            return;
+        }
+
+        PopulateDupes();
+    }
+
     /// <summary>
     /// Runs the full SIFT hashing and similarity matching pipeline asynchronously.
     /// </summary>
-    private async Task RunAnalysisAsync()
+    private async Task RunAnalysisAsync(CancellationToken ct = default)
     {
         if (_dataCollectionFlat == null || _dataCollectionFlat.Count < 2)
         {
@@ -431,26 +749,42 @@ public class MainViewModel : ViewModelBase
             return;
         }
 
-        var calcProgress = new Progress<double>(value =>
+        IsProgressVisible = Visibility.Visible;
+        var imageCount = _dataCollectionFlat.Count;
+
+        // Phase: Hashing
+        StatusText = $"Computing hashes... 0/{imageCount}";
+        var hashProgress = new Progress<double>(value =>
         {
             CalcProgress = value;
+            var done = (int)(value / 100.0 * imageCount);
+            StatusText = $"Computing hashes... {done}/{imageCount}";
         });
 
         var hashesDict = _calcOperations.CalcSiftHashes(
-            _dataCollectionFlat, _dbService, calcProgress, out var hashTask, ThumbnailSize);
+            _dataCollectionFlat, _dbService, hashProgress, out var hashTask, ThumbnailSize, ct);
 
         await hashTask;
+        ct.ThrowIfCancellationRequested();
 
+        // Phase: Matching
+        var pairCount = hashesDict.Count * (hashesDict.Count - 1) / 2;
+        StatusText = $"Matching pairs... 0/{pairCount}";
         var matchProgress = new Progress<double>(value =>
         {
             CalcProgress = value;
+            var done = (int)(value / 100.0 * pairCount);
+            StatusText = $"Matching pairs... {done}/{pairCount}";
         });
 
         _matches = await Task.Run(() =>
-            _calcOperations.CreateMatchCollection(hashesDict, matchProgress).Distinct().ToList());
+            _calcOperations.CreateMatchCollection(hashesDict, matchProgress, ct).Distinct().ToList(), ct);
+
+        ct.ThrowIfCancellationRequested();
 
         await StoreSimilarityResultsAsync(_matches);
 
+        IsProgressVisible = Visibility.Collapsed;
         PopulateDupes();
     }
 
@@ -458,8 +792,8 @@ public class MainViewModel : ViewModelBase
     {
         _t = new Timer(_ => Application.Current?.Dispatcher?.BeginInvoke(new Action(() =>
         {
-            using var proc = Process.GetCurrentProcess();
-            AllocMem = proc.PrivateMemorySize64 / 1000000;
+            //using var proc = Process.GetCurrentProcess();
+            //AllocMem = proc.PrivateMemorySize64 / 1000000;
         })), null, 0, 300);
     }
 
@@ -524,8 +858,7 @@ public class MainViewModel : ViewModelBase
             var currentPaths = new HashSet<string>(_dataCollectionFlat.Select(i => i.FilePath));
 
             var relevantResults = cachedResults
-                .Where(r => r.Score < 200
-                            && r.Photo1?.FilePath != null && currentPaths.Contains(r.Photo1.FilePath)
+                .Where(r => r.Photo1?.FilePath != null && currentPaths.Contains(r.Photo1.FilePath)
                             && r.Photo2?.FilePath != null && currentPaths.Contains(r.Photo2.FilePath))
                 .ToList();
 
@@ -534,23 +867,20 @@ public class MainViewModel : ViewModelBase
                 return false;
             }
 
-            // Already on UI thread after await (SynchronizationContext)
-            var pairs = relevantResults
-                .Select(r => new ImagePair(ThumbnailSize, EventAggregator)
-                {
-                    Image1 = _dataCollectionFlat.FirstOrDefault(im => im.FilePath == r.Photo1.FilePath),
-                    Image2 = _dataCollectionFlat.FirstOrDefault(im => im.FilePath == r.Photo2.FilePath),
-                    Match = r.Score
-                })
-                .Where(p => p.Image1 != null && p.Image2 != null)
+            // Populate _matches so the slider can re-filter cached results too
+            _matches = relevantResults
+                .Select(r => new PairSimilarityInfo(
+                    new KeyValuePair<string, Mat>(r.Photo1.FilePath, null),
+                    new KeyValuePair<string, Mat>(r.Photo2.FilePath, null),
+                    r.Score))
+                .OrderBy(p => p.Match)
                 .ToList();
 
-            if (pairs.Count > 0)
+            PopulateDupes();
+
+            if (PairDataCollection is { Count: > 0 })
             {
-                PairDataCollection = pairs;
-                ThumbnailGridVisibility = Visibility.Collapsed;
-                PairGridVisibility = Visibility.Visible;
-                StatusText = $"Loaded {pairs.Count} cached pairs. Click Analyze to re-scan.";
+                StatusText = $"Loaded {PairDataCollection.Count} cached pairs. Click Analyze to re-scan.";
                 return true;
             }
 

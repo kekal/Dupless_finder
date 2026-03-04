@@ -38,6 +38,11 @@ public class LoadingOperationsTests : IDisposable
     /// </summary>
     private IEnumerable<string> CallDirSearch(string sDir, params string[] types)
     {
+        return CallDirSearch(sDir, true, types);
+    }
+
+    private IEnumerable<string> CallDirSearch(string sDir, bool includeSubfolders, params string[] types)
+    {
         // Get the assembly containing LoadingOperations
         var assembly = typeof(ImageInfo).Assembly; // ImageInfo is in same assembly as LoadingOperations
         var loadingOpsType = assembly.GetType("Dupples_finder_UI.Services.LoadingOperations");
@@ -54,7 +59,7 @@ public class LoadingOperationsTests : IDisposable
             throw new InvalidOperationException("DirSearch method not found");
         }
 
-        var result = method.Invoke(null, [sDir, types]);
+        var result = method.Invoke(null, [sDir, includeSubfolders, types]);
         return (IEnumerable<string>)result;
     }
 
@@ -122,6 +127,19 @@ public class LoadingOperationsTests : IDisposable
         var paths = CallDirSearch(_tempDirPath, ".jpg").ToList();
 
         Assert.Equal(3, paths.Count);
+    }
+
+    [Fact]
+    public void DirSearch_TopDirectoryOnly_DoesNotSearchSubfolders()
+    {
+        CreateFile("level1", ".jpg");
+        CreateFile("subdir/level2", ".jpg");
+        CreateFile("subdir/deeper/level3", ".jpg");
+
+        var paths = CallDirSearch(_tempDirPath, false, ".jpg").ToList();
+
+        Assert.Single(paths);
+        Assert.Contains("level1.jpg", paths[0]);
     }
 
     [Fact]

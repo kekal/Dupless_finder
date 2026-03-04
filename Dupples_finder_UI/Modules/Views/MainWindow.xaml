@@ -29,6 +29,57 @@
         <!--  Toolbar: Open + Analyze buttons, progress, memory, status  -->
         <ToolBarTray Grid.ColumnSpan="2">
             <ToolBar Band="1" BandIndex="1">
+                <CheckBox
+                    Margin="2,0,2,0"
+                    VerticalAlignment="Center"
+                    IsChecked="{Binding IncludeSubfolders}"
+                    ToolTip="When checked, searches all subfolders recursively">
+                    <CheckBox.Style>
+                        <Style TargetType="CheckBox">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="CheckBox">
+                                        <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+                                            <Grid
+                                                Width="16"
+                                                Height="16"
+                                                Margin="0,0,6,0">
+                                                <Border
+                                                    x:Name="Border"
+                                                    Background="#FF444444"
+                                                    BorderBrush="#FF888888"
+                                                    BorderThickness="1"
+                                                    CornerRadius="2" />
+                                                <Path
+                                                    x:Name="CheckMark"
+                                                    HorizontalAlignment="Center"
+                                                    VerticalAlignment="Center"
+                                                    Data="M 2,5 L 6,9 L 12,1"
+                                                    Stroke="White"
+                                                    StrokeThickness="2"
+                                                    Visibility="Collapsed" />
+                                            </Grid>
+                                            <ContentPresenter VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="CheckMark" Property="Visibility" Value="Visible" />
+                                            </Trigger>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Border" Property="BorderBrush" Value="#FFAAAAAA" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </CheckBox.Style>
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        Foreground="#FFB8D17D"
+                        Text="Include subfolders" />
+                </CheckBox>
+                <Separator />
                 <Button Command="{Binding OpenCommand}" ToolTip="Open folder and scan for images">
                     <TextBlock Foreground="White" Text="Open" />
                 </Button>
@@ -37,16 +88,53 @@
                 </Button>
                 <Separator />
                 <Label
+                    Content="Sensitivity:"
+                    FontSize="11"
+                    Foreground="LightGray"
+                    ToolTip="Lower = stricter matching (fewer, more similar pairs)" />
+                <Slider
+                    Width="120"
+                    VerticalAlignment="Center"
+                    IsSnapToTickEnabled="True"
+                    Maximum="500"
+                    Minimum="20"
+                    TickFrequency="10"
+                    ToolTip="Score threshold: lower = stricter matching"
+                    Value="{Binding ScoreThreshold}" />
+                <Label
+                    MinWidth="30"
+                    Content="{Binding ScoreThreshold}"
+                    ContentStringFormat="{}{0:F0}"
+                    FontSize="11"
+                    Foreground="LightGray" />
+                <Separator />
+                <Button
+                    Command="{Binding UndoCommand}"
+                    ToolTip="Undo last delete (restore file)"
+                    Visibility="{Binding UndoVisibility}">
+                    <TextBlock Foreground="White" Text="Undo Deletion" />
+                </Button>
+                <Separator Visibility="{Binding UndoVisibility}" />
+                <Label
                     Content="{Binding StatusText}"
                     FontSize="11"
                     Foreground="LightGray" />
                 <Separator />
-                <Label Content="{Binding AllocMem}" ToolTip="Memory (MB)" />
+                <Label
+                    Content="{Binding AllocMem}"
+                    ContentStringFormat="{}{0} MB RAM used"
+                    ToolTip="Memory (MB)" />
                 <ProgressBar
                     Width="200"
                     ToolTip="{Binding CalcProgressText}"
                     Visibility="{Binding IsProgressVisible}"
                     Value="{Binding CalcProgress}" />
+                <Button
+                    Command="{Binding CancelCommand}"
+                    ToolTip="Cancel current operation"
+                    Visibility="{Binding IsProgressVisible}">
+                    <TextBlock Foreground="#FFE07070" Text="Cancel" />
+                </Button>
             </ToolBar>
         </ToolBarTray>
 
@@ -56,6 +144,11 @@
             Grid.Column="0"
             HorizontalScrollBarVisibility="Disabled"
             VerticalScrollBarVisibility="Auto"
+            VirtualizingPanel.CacheLength="1,1"
+            VirtualizingPanel.CacheLengthUnit="Page"
+            VirtualizingPanel.IsVirtualizing="True"
+            VirtualizingPanel.ScrollUnit="Pixel"
+            VirtualizingPanel.VirtualizationMode="Recycling"
             Visibility="{Binding ThumbnailGridVisibility}">
             <ItemsControl ItemsSource="{Binding ImageCollection}">
                 <ItemsControl.ItemsPanel>
@@ -73,44 +166,50 @@
                             Background="#333"
                             BorderBrush="#444"
                             BorderThickness="1">
-                            <StackPanel>
+                            <Grid>
+                                <StackPanel>
+                                    <Button
+                                        Width="196"
+                                        Height="200"
+                                        HorizontalContentAlignment="Center"
+                                        VerticalContentAlignment="Center"
+                                        ToolTip="{Binding FilePath}">
+                                        <Button.InputBindings>
+                                            <MouseBinding Command="{Binding ImageClick}" Gesture="Alt+LeftClick" />
+                                            <MouseBinding Command="{Binding ImageDoubleClick}" Gesture="LeftDoubleClick" />
+                                        </Button.InputBindings>
+                                        <Grid Width="196" Height="200">
+                                            <!--  Placeholder text is visible when Image is null  -->
+                                            <TextBlock
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                FontSize="11"
+                                                Foreground="Gray"
+                                                Text="Loading..." />
+                                            <!--  Thumbnail image overlays the placeholder when loaded  -->
+                                            <Image
+                                                MaxWidth="196"
+                                                MaxHeight="200"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                Source="{Binding Image, Mode=OneWay}"
+                                                Stretch="Uniform" />
+                                        </Grid>
+                                    </Button>
+                                    <TextBlock
+                                        MaxWidth="196"
+                                        Margin="0,2,0,0"
+                                        HorizontalAlignment="Center"
+                                        FontSize="10"
+                                        Foreground="White"
+                                        Text="{Binding FileName}"
+                                        TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
                                 <Button
-                                    Width="196"
-                                    Height="200"
-                                    HorizontalContentAlignment="Center"
-                                    VerticalContentAlignment="Center"
-                                    ToolTip="{Binding FilePath}">
-                                    <Button.InputBindings>
-                                        <MouseBinding Command="{Binding ImageClick}" Gesture="Alt+LeftClick" />
-                                        <MouseBinding Command="{Binding ImageDoubleClick}" Gesture="LeftDoubleClick" />
-                                    </Button.InputBindings>
-                                    <Grid Width="196" Height="200">
-                                        <!--  Placeholder text is visible when Image is null  -->
-                                        <TextBlock
-                                            HorizontalAlignment="Center"
-                                            VerticalAlignment="Center"
-                                            FontSize="11"
-                                            Foreground="Gray"
-                                            Text="Loading..." />
-                                        <!--  Thumbnail image overlays the placeholder when loaded  -->
-                                        <Image
-                                            MaxWidth="196"
-                                            MaxHeight="200"
-                                            HorizontalAlignment="Center"
-                                            VerticalAlignment="Center"
-                                            Source="{Binding Image, Mode=OneWay}"
-                                            Stretch="Uniform" />
-                                    </Grid>
-                                </Button>
-                                <TextBlock
-                                    MaxWidth="196"
-                                    Margin="0,2,0,0"
-                                    HorizontalAlignment="Center"
-                                    FontSize="10"
-                                    Foreground="White"
-                                    Text="{Binding FileName}"
-                                    TextTrimming="CharacterEllipsis" />
-                            </StackPanel>
+                                    Command="{Binding DataContext.DeleteImageCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                    CommandParameter="{Binding}"
+                                    Style="{StaticResource DeleteButtonStyle}" />
+                            </Grid>
                         </Border>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
@@ -155,44 +254,52 @@
                                     Grid.Column="2"
                                     Content="{Binding Image2.FileName}" />
 
-                                <Button
-                                    Grid.Row="1"
-                                    Grid.Column="0"
-                                    HorizontalAlignment="Left"
-                                    VerticalAlignment="Center"
-                                    ToolTip="{Binding Image1.FilePath}">
-                                    <Button.InputBindings>
-                                        <MouseBinding Command="{Binding Image1.ImageClick}" Gesture="Alt+LeftClick" />
-                                        <MouseBinding Command="{Binding Image1DoubleClick}" Gesture="LeftDoubleClick" />
-                                    </Button.InputBindings>
-                                    <Image
-                                        HorizontalAlignment="Center"
-                                        VerticalAlignment="Center"
-                                        Source="{Binding Image1.Image, Mode=OneWay}"
-                                        Tag="{Binding Image1.FilePath}" />
-                                </Button>
+                                <Grid Grid.Row="1" Grid.Column="0">
+                                    <Button
+                                        HorizontalAlignment="Stretch"
+                                        VerticalAlignment="Stretch"
+                                        ToolTip="{Binding Image1.FilePath}">
+                                        <Button.InputBindings>
+                                            <MouseBinding Command="{Binding Image1.ImageClick}" Gesture="Alt+LeftClick" />
+                                            <MouseBinding Command="{Binding Image1DoubleClick}" Gesture="LeftDoubleClick" />
+                                        </Button.InputBindings>
+                                        <Image
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            Source="{Binding Image1.Image, Mode=OneWay}"
+                                            Tag="{Binding Image1.FilePath}" />
+                                    </Button>
+                                    <Button
+                                        Command="{Binding DataContext.DeleteImageCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                        CommandParameter="{Binding Image1}"
+                                        Style="{StaticResource DeleteButtonStyle}" />
+                                </Grid>
                                 <StackPanel
                                     Grid.Row="1"
                                     Grid.Column="1"
                                     MinWidth="20">
                                     <Label HorizontalAlignment="Center" Content="{Binding BestDistance}" />
                                 </StackPanel>
-                                <Button
-                                    Grid.Row="1"
-                                    Grid.Column="2"
-                                    HorizontalAlignment="Right"
-                                    VerticalAlignment="Center"
-                                    ToolTip="{Binding Image2.FilePath}">
-                                    <Button.InputBindings>
-                                        <MouseBinding Command="{Binding Image2.ImageClick}" Gesture="Alt+LeftClick" />
-                                        <MouseBinding Command="{Binding Image2DoubleClick}" Gesture="LeftDoubleClick" />
-                                    </Button.InputBindings>
-                                    <Image
-                                        HorizontalAlignment="Center"
-                                        VerticalAlignment="Center"
-                                        Source="{Binding Image2.Image, Mode=OneWay}"
-                                        Tag="{Binding Image2.FilePath}" />
-                                </Button>
+                                <Grid Grid.Row="1" Grid.Column="2">
+                                    <Button
+                                        HorizontalAlignment="Stretch"
+                                        VerticalAlignment="Stretch"
+                                        ToolTip="{Binding Image2.FilePath}">
+                                        <Button.InputBindings>
+                                            <MouseBinding Command="{Binding Image2.ImageClick}" Gesture="Alt+LeftClick" />
+                                            <MouseBinding Command="{Binding Image2DoubleClick}" Gesture="LeftDoubleClick" />
+                                        </Button.InputBindings>
+                                        <Image
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            Source="{Binding Image2.Image, Mode=OneWay}"
+                                            Tag="{Binding Image2.FilePath}" />
+                                    </Button>
+                                    <Button
+                                        Command="{Binding DataContext.DeleteImageCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                        CommandParameter="{Binding Image2}"
+                                        Style="{StaticResource DeleteButtonStyle}" />
+                                </Grid>
                             </Grid>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
@@ -249,5 +356,21 @@
                 VerticalAlignment="Stretch"
                 Source="{Binding CurrentImageView, IsAsync=True, Mode=OneWay}" />
         </Button>
+        <!--  Delete button for previewed image (top-right of preview area)  -->
+        <Button
+            Grid.Row="1"
+            Grid.Column="1"
+            Margin="0,20,8,0"
+            Padding="8,4"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Top"
+            Panel.ZIndex="10"
+            Background="#FF737373"
+            Command="{Binding DeletePreviewCommand}"
+            Content="DELETE"
+            FontWeight="Bold"
+            Foreground="#FFEDEDED"
+            Opacity="0.8"
+            Visibility="{Binding PreviewDeleteVisibility}" />
     </Grid>
 </Window>

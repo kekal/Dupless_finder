@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Dupples_finder_UI.DTO;
 using OpenCvSharp;
@@ -14,9 +15,11 @@ public interface ICalcOperations
         IPhotoDbService dbService,
         IProgress<double> progress,
         out Task result,
-        int thumbSize = 256);
+        int thumbSize = 256,
+        CancellationToken ct = default);
 
     IEnumerable<PairSimilarityInfo> CreateMatchCollection(
         IDictionary<string, Mat> hashDict,
-        IProgress<double> progress);
+        IProgress<double> progress,
+        CancellationToken ct = default);
 }

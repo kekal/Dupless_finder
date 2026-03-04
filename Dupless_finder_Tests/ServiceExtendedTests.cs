@@ -43,7 +43,11 @@ public class CalcOperationsExtendedTests : IDisposable
     {
         foreach (var path in _tempFiles)
         {
-            try { if (File.Exists(path)) File.Delete(path); } catch { }
+            try { if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            } catch { }
         }
     }
 
@@ -544,7 +548,11 @@ public class PhotoDbServiceExtendedTests : IDisposable
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         foreach (var path in _tempDbPaths)
         {
-            try { if (File.Exists(path)) File.Delete(path); } catch { }
+            try { if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            } catch { }
         }
     }
 
@@ -675,13 +683,19 @@ public class PhotoDbServiceExtendedTests : IDisposable
         await service.InitializeAsync(dbPath);
 
         // Skip if DB init failed (pre-existing environment issue).
-        if (!service.IsAvailable) return;
+        if (!service.IsAvailable)
+        {
+            return;
+        }
 
         var p1 = await service.CachePhotoHashAsync("/x.jpg", new byte[] { 1 }, 1, 128, 333L, DateTime.UtcNow);
         var p2 = await service.CachePhotoHashAsync("/y.jpg", new byte[] { 2 }, 1, 128, 444L, DateTime.UtcNow);
 
         // CachePhotoHashAsync can return null if DB operations fail.
-        if (p1 == null || p2 == null) return;
+        if (p1 == null || p2 == null)
+        {
+            return;
+        }
 
         await service.StoreSimilarityAsync(p1.Id, p2.Id, 0.50);
         await service.StoreSimilarityAsync(p1.Id, p2.Id, 0.99); // update
@@ -733,9 +747,17 @@ public class LoadingOperationsExtendedTests : IDisposable
     {
         foreach (var d in _extraDirs)
         {
-            try { if (Directory.Exists(d)) Directory.Delete(d, true); } catch { }
+            try { if (Directory.Exists(d))
+                {
+                    Directory.Delete(d, true);
+                }
+            } catch { }
         }
-        try { if (Directory.Exists(_tempDir)) Directory.Delete(_tempDir, true); } catch { }
+        try { if (Directory.Exists(_tempDir))
+            {
+                Directory.Delete(_tempDir, true);
+            }
+        } catch { }
     }
 
     // NOTE: GetAllPaths_WithNonEmptyRootFolder_ReturnsTrue_AndFindsImages was removed
@@ -830,7 +852,7 @@ public class LoadingOperationsExtendedTests : IDisposable
         IEnumerable<string> result = null;
         var ex = Record.Exception(() =>
         {
-            result = (IEnumerable<string>)method.Invoke(null, new object[] { ghostDir, new[] { ".jpg" } });
+            result = (IEnumerable<string>)method.Invoke(null, new object[] { ghostDir, true, new[] { ".jpg" } });
         });
 
         // The catch block inside DirSearch must swallow the exception
@@ -891,7 +913,11 @@ public class ThumbnailServiceExtendedTests : IDisposable
     {
         foreach (var f in _tempFiles)
         {
-            try { if (File.Exists(f)) File.Delete(f); } catch { }
+            try { if (File.Exists(f))
+                {
+                    File.Delete(f);
+                }
+            } catch { }
         }
     }
 
@@ -974,10 +1000,16 @@ public class ThumbnailServiceExtendedTests : IDisposable
             try
             {
                 var source = _service.GetThumbnail(bitmapPath);
-                if (source == null) return; // Shell API unavailable in CI
+                if (source == null)
+                {
+                    return; // Shell API unavailable in CI
+                }
 
                 encoded = _service.EncodeBitmapSourceToBytes(source);
-                if (encoded == null || encoded.Length == 0) return;
+                if (encoded == null || encoded.Length == 0)
+                {
+                    return;
+                }
 
                 roundTripped = _service.BytesToBitmapSource(encoded);
             }
@@ -990,7 +1022,10 @@ public class ThumbnailServiceExtendedTests : IDisposable
         thread.Start();
         thread.Join();
 
-        if (threadEx != null) throw threadEx;
+        if (threadEx != null)
+        {
+            throw threadEx;
+        }
 
         // In environments where the Windows Shell thumbnail API works:
         if (encoded != null && encoded.Length > 0)
@@ -1035,7 +1070,10 @@ public class ThumbnailServiceExtendedTests : IDisposable
         thread.Start();
         thread.Join();
 
-        if (threadEx != null) throw threadEx;
+        if (threadEx != null)
+        {
+            throw threadEx;
+        }
 
         Assert.NotNull(result);
         Assert.NotEmpty(result);

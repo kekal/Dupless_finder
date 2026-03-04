@@ -137,10 +137,10 @@ public class MainViewModelCoverageGapTests : IDisposable
         var path2 = Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(false);
 
@@ -152,7 +152,8 @@ public class MainViewModelCoverageGapTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Callback(new InvocationAction(invocation =>
                 {
                     capturedCalcProgress = invocation.Arguments[2] as IProgress<double>;
@@ -162,7 +163,8 @@ public class MainViewModelCoverageGapTests : IDisposable
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(Enumerable.Empty<PairSimilarityInfo>());
 
             var previousCtx = SynchronizationContext.Current;
@@ -196,10 +198,10 @@ public class MainViewModelCoverageGapTests : IDisposable
         var path2 = Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(false);
 
@@ -210,15 +212,17 @@ public class MainViewModelCoverageGapTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             IProgress<double> capturedMatchProgress = null;
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
-                .Callback<IDictionary<string, Mat>, IProgress<double>>((dict, progress) =>
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
+                .Callback<IDictionary<string, Mat>, IProgress<double>, CancellationToken>((dict, progress, ct) =>
                 {
                     capturedMatchProgress = progress;
                 })
@@ -256,10 +260,10 @@ public class MainViewModelCoverageGapTests : IDisposable
         var path2 = Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(false);
 
@@ -270,15 +274,17 @@ public class MainViewModelCoverageGapTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             IProgress<double> capturedProgress = null;
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
-                .Callback<IDictionary<string, Mat>, IProgress<double>>((dict, progress) =>
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
+                .Callback<IDictionary<string, Mat>, IProgress<double>, CancellationToken>((dict, progress, ct) =>
                 {
                     capturedProgress = progress;
                 })
@@ -335,10 +341,10 @@ public class MainViewModelCoverageGapTests : IDisposable
         var path2 = Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             // DB is available so StoreSimilarityResultsAsync body is entered.
             _mockDbService.Setup(d => d.IsAvailable).Returns(true);
@@ -363,13 +369,15 @@ public class MainViewModelCoverageGapTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new[] { goodMatch });
 
             // Should complete without throwing — the catch block swallows the exception.
@@ -394,10 +402,10 @@ public class MainViewModelCoverageGapTests : IDisposable
         var path2 = Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(true);
 
@@ -419,13 +427,15 @@ public class MainViewModelCoverageGapTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new[] { goodMatch });
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -456,10 +466,10 @@ public class MainViewModelCoverageGapTests : IDisposable
         var path2 = Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(true);
 
@@ -477,13 +487,15 @@ public class MainViewModelCoverageGapTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new[] { maxMatch });
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -512,10 +524,10 @@ public class MainViewModelCoverageGapTests : IDisposable
         var path2 = Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(true);
 
@@ -536,13 +548,15 @@ public class MainViewModelCoverageGapTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(Enumerable.Empty<PairSimilarityInfo>());
 
             var exception = await Record.ExceptionAsync(
@@ -565,10 +579,10 @@ public class MainViewModelCoverageGapTests : IDisposable
         var path2 = Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(true);
 
@@ -587,13 +601,15 @@ public class MainViewModelCoverageGapTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(Enumerable.Empty<PairSimilarityInfo>());
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -605,7 +621,8 @@ public class MainViewModelCoverageGapTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out It.Ref<Task>.IsAny,
-                    It.IsAny<int>()),
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()),
                 Times.Once);
         }
         finally
@@ -630,10 +647,10 @@ public class MainViewModelCoverageGapTests : IDisposable
         var path2 = Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(true);
 
@@ -663,13 +680,15 @@ public class MainViewModelCoverageGapTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(Enumerable.Empty<PairSimilarityInfo>());
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -681,7 +700,8 @@ public class MainViewModelCoverageGapTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out It.Ref<Task>.IsAny,
-                    It.IsAny<int>()),
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()),
                 Times.Once);
         }
         finally
@@ -731,10 +751,10 @@ public class MainViewModelCoverageGapTests : IDisposable
         var path3 = Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2, path3 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2), new FileInfo(path3) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(true);
 
@@ -764,13 +784,15 @@ public class MainViewModelCoverageGapTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(Enumerable.Empty<PairSimilarityInfo>());
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -782,7 +804,8 @@ public class MainViewModelCoverageGapTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out It.Ref<Task>.IsAny,
-                    It.IsAny<int>()),
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()),
                 Times.Once);
         }
         finally
@@ -801,10 +824,10 @@ public class MainViewModelCoverageGapTests : IDisposable
         var path2 = Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(true);
 
@@ -833,13 +856,15 @@ public class MainViewModelCoverageGapTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(Enumerable.Empty<PairSimilarityInfo>());
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -851,7 +876,8 @@ public class MainViewModelCoverageGapTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out It.Ref<Task>.IsAny,
-                    It.IsAny<int>()),
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()),
                 Times.Once);
         }
         finally
@@ -869,10 +895,10 @@ public class MainViewModelCoverageGapTests : IDisposable
         var path2 = Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(true);
 
@@ -901,13 +927,15 @@ public class MainViewModelCoverageGapTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(Enumerable.Empty<PairSimilarityInfo>());
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -918,7 +946,8 @@ public class MainViewModelCoverageGapTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out It.Ref<Task>.IsAny,
-                    It.IsAny<int>()),
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()),
                 Times.Once);
         }
         finally
@@ -1132,10 +1161,10 @@ public class MainViewModelCoverageGapTests : IDisposable
         try
         {
             // First populate _dataCollectionFlat via OpenCommand.
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(false);
 
@@ -1146,7 +1175,8 @@ public class MainViewModelCoverageGapTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             // Score 999 >= 200 -> PopulateDupes filters it out -> else branch.
@@ -1154,7 +1184,8 @@ public class MainViewModelCoverageGapTests : IDisposable
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new[] { highMatch });
 
             // Populate _dataCollectionFlat.
@@ -1179,10 +1210,10 @@ public class MainViewModelCoverageGapTests : IDisposable
         var path2 = Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(false);
 
@@ -1193,13 +1224,15 @@ public class MainViewModelCoverageGapTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(Enumerable.Empty<PairSimilarityInfo>());
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);

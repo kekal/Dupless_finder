@@ -499,7 +499,9 @@ public class ImageInfoExtendedTests : IDisposable
         imageInfo.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName == nameof(imageInfo.Image))
+            {
                 eventFiredCount++;
+            }
         };
 
         var mockDb = new Mock<IPhotoDbService>();

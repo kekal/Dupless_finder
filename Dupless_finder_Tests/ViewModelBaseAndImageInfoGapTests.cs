@@ -88,7 +88,9 @@ public class ImageInfoGapTests : IDisposable
         try
         {
             if (Directory.Exists(_tempDir))
+            {
                 Directory.Delete(_tempDir, recursive: true);
+            }
         }
         catch { /* swallow cleanup errors in CI */ }
     }
@@ -551,7 +553,10 @@ public class MouseWheelGestureGapTests
             var gesture = MouseWheelGesture.Up;
             var args = TryCreateWheelArgs(delta: -120); // negative = scroll down
 
-            if (args == null) return;
+            if (args == null)
+            {
+                return;
+            }
 
             var result = gesture.Matches(null, args);
             Assert.False(result);
@@ -566,7 +571,10 @@ public class MouseWheelGestureGapTests
             var gesture = MouseWheelGesture.Up;
             var args = TryCreateWheelArgs(delta: 0);
 
-            if (args == null) return;
+            if (args == null)
+            {
+                return;
+            }
 
             var result = gesture.Matches(null, args);
             Assert.False(result);
@@ -585,7 +593,10 @@ public class MouseWheelGestureGapTests
             var gesture = MouseWheelGesture.Down;
             var args = TryCreateWheelArgs(delta: -120); // negative = scroll down
 
-            if (args == null) return;
+            if (args == null)
+            {
+                return;
+            }
 
             var result = gesture.Matches(null, args);
             Assert.True(result);
@@ -600,7 +611,10 @@ public class MouseWheelGestureGapTests
             var gesture = MouseWheelGesture.Down;
             var args = TryCreateWheelArgs(delta: 120); // positive = scroll up
 
-            if (args == null) return;
+            if (args == null)
+            {
+                return;
+            }
 
             var result = gesture.Matches(null, args);
             Assert.False(result);
@@ -615,7 +629,10 @@ public class MouseWheelGestureGapTests
             var gesture = MouseWheelGesture.Down;
             var args = TryCreateWheelArgs(delta: 0);
 
-            if (args == null) return;
+            if (args == null)
+            {
+                return;
+            }
 
             var result = gesture.Matches(null, args);
             Assert.False(result);
@@ -690,7 +707,10 @@ public class MouseWheelGestureGapTests
             var downGesture = MouseWheelGesture.Down;
             var upArgs      = TryCreateWheelArgs(delta: 120);
 
-            if (upArgs == null) return;
+            if (upArgs == null)
+            {
+                return;
+            }
 
             Assert.False(downGesture.Matches(null, upArgs));
         });
@@ -709,7 +729,10 @@ public class MouseWheelGestureGapTests
             var upGesture = MouseWheelGesture.Up;
             var downArgs  = TryCreateWheelArgs(delta: -120);
 
-            if (downArgs == null) return;
+            if (downArgs == null)
+            {
+                return;
+            }
 
             Assert.False(upGesture.Matches(null, downArgs));
         });

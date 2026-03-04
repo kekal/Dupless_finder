@@ -31,7 +31,7 @@ public class CalcOperations : ICalcOperations
     /// Cache lookups use the ImageInfo's FileSize + LastModifiedUtc (fingerprint)
     /// instead of file path, so moved/renamed files still get cache hits.
     /// </summary>
-    public ConcurrentDictionary<string, Mat> CalcSiftHashes(IEnumerable<ImageInfo> infos, IPhotoDbService dbService, IProgress<double> progress, out Task result, int thumbSize = 256)
+    public ConcurrentDictionary<string, Mat> CalcSiftHashes(IEnumerable<ImageInfo> infos, IPhotoDbService dbService, IProgress<double> progress, out Task result, int thumbSize = 256, CancellationToken ct = default)
     {
         Trace.WriteLine("CalcSiftHashes started");
 
@@ -44,6 +44,7 @@ public class CalcOperations : ICalcOperations
         {
             var task = Task.Run(async () =>
             {
+                ct.ThrowIfCancellationRequested();
                 Thread.CurrentThread.Priority = ThreadPriority.Lowest;
 
                 // Try to load cached SIFT descriptors from DB using fingerprint
@@ -117,12 +118,12 @@ public class CalcOperations : ICalcOperations
 
         SetProgressIterationsScope(tasks);
 
-        result = Task.WhenAll(tasks.ToArray()).ContinueWith(_ => DisablePublishingProgress());
+        result = Task.WhenAll(tasks.ToArray()).ContinueWith(_ => DisablePublishingProgress(), CancellationToken.None);
 
         return hashesDict;
     }
 
-    public IEnumerable<PairSimilarityInfo> CreateMatchCollection(IDictionary<string, Mat> hashDict, IProgress<double> progress)
+    public IEnumerable<PairSimilarityInfo> CreateMatchCollection(IDictionary<string, Mat> hashDict, IProgress<double> progress, CancellationToken ct = default)
     {
         EnablePublishingProgress(progress);
         var similarities = new ConcurrentBag<PairSimilarityInfo>();
@@ -132,9 +133,10 @@ public class CalcOperations : ICalcOperations
         SetProgressIterationsScope(Math.Max(pairCount, 1));
         for (var j = 0; j < hashes.Length; j++)
         {
+            ct.ThrowIfCancellationRequested();
             var jCopy = j;
 
-            Parallel.For(jCopy + 1, hashes.Length, new ParallelOptions { MaxDegreeOfParallelism = 8 }, i1 =>
+            Parallel.For(jCopy + 1, hashes.Length, new ParallelOptions { MaxDegreeOfParallelism = 8, CancellationToken = ct }, i1 =>
             {
                 Thread.CurrentThread.Priority = ThreadPriority.Lowest;
 

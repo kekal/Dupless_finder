@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -386,7 +387,8 @@ public class MainViewModelTests : IDisposable
                 It.IsAny<IPhotoDbService>(),
                 It.IsAny<IProgress<double>>(),
                 out It.Ref<Task>.IsAny,
-                It.IsAny<int>()),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -404,18 +406,15 @@ public class MainViewModelTests : IDisposable
     #endregion
 
     // ===========================================================================
-    // 5. OpenCommand — GetAllPaths returns false
+    // 5. OpenCommand — ShowFolderDialog returns null (cancelled)
     // ===========================================================================
 
-    #region OpenCommand Tests (GetAllPaths returns false)
+    #region OpenCommand Tests (ShowFolderDialog returns null)
 
     [Fact]
-    public async Task OpenCommand_WhenGetAllPathsReturnsFalse_ReturnsEarly()
+    public async Task OpenCommand_WhenShowFolderDialogReturnsNull_ReturnsEarly()
     {
-        IEnumerable<string> outPaths;
-        _mockLoadingOps
-            .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-            .Returns(false);
+        _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns((string)null);
 
         await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
 
@@ -424,12 +423,9 @@ public class MainViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task OpenCommand_WhenGetAllPathsReturnsFalse_DoesNotResetVisibility()
+    public async Task OpenCommand_WhenShowFolderDialogReturnsNull_DoesNotResetVisibility()
     {
-        IEnumerable<string> outPaths;
-        _mockLoadingOps
-            .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-            .Returns(false);
+        _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns((string)null);
 
         // The VM starts with ThumbnailGridVisibility = Visible; it stays that way.
         await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -440,15 +436,15 @@ public class MainViewModelTests : IDisposable
 
     #endregion
 
-    #region OpenCommand Tests (GetAllPaths returns true)
+    #region OpenCommand Tests (ShowFolderDialog returns folder)
 
     [Fact]
-    public async Task OpenCommand_WhenGetAllPathsReturnsEmptyPaths_SetsEmptyImageCollection()
+    public async Task OpenCommand_WhenScanImageFilesReturnsEmptyPaths_SetsEmptyImageCollection()
     {
-        var outPaths = Enumerable.Empty<string>();
+        _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
         _mockLoadingOps
-            .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-            .Returns(true);
+            .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+            .Returns(new List<FileInfo>());
 
         _mockDbService.Setup(d => d.IsAvailable).Returns(false);
 
@@ -459,13 +455,15 @@ public class MainViewModelTests : IDisposable
                 It.IsAny<IPhotoDbService>(),
                 It.IsAny<IProgress<double>>(),
                 out completedTask,
-                It.IsAny<int>()))
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
             .Returns(new ConcurrentDictionary<string, Mat>());
 
         _mockCalcOps
             .Setup(c => c.CreateMatchCollection(
                 It.IsAny<IDictionary<string, Mat>>(),
-                It.IsAny<IProgress<double>>()))
+                It.IsAny<IProgress<double>>(),
+                It.IsAny<CancellationToken>()))
             .Returns(Enumerable.Empty<PairSimilarityInfo>());
 
         await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -474,17 +472,17 @@ public class MainViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task OpenCommand_WhenGetAllPathsReturnsTwoPaths_SetsImageCollection()
+    public async Task OpenCommand_WhenScanImageFilesReturnsTwoPaths_SetsImageCollection()
     {
         var path1 = System.IO.Path.GetTempFileName();
         var path2 = System.IO.Path.GetTempFileName();
 
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(false);
 
@@ -495,13 +493,15 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(Enumerable.Empty<PairSimilarityInfo>());
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -520,10 +520,10 @@ public class MainViewModelTests : IDisposable
     [Fact]
     public async Task OpenCommand_WithPaths_ResetsPairDataCollectionToEmpty()
     {
-        var outPaths = Enumerable.Empty<string>();
+        _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
         _mockLoadingOps
-            .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-            .Returns(true);
+            .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+            .Returns(new List<FileInfo>());
 
         _mockDbService.Setup(d => d.IsAvailable).Returns(false);
 
@@ -534,13 +534,15 @@ public class MainViewModelTests : IDisposable
                 It.IsAny<IPhotoDbService>(),
                 It.IsAny<IProgress<double>>(),
                 out completedTask,
-                It.IsAny<int>()))
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
             .Returns(new ConcurrentDictionary<string, Mat>());
 
         _mockCalcOps
             .Setup(c => c.CreateMatchCollection(
                 It.IsAny<IDictionary<string, Mat>>(),
-                It.IsAny<IProgress<double>>()))
+                It.IsAny<IProgress<double>>(),
+                It.IsAny<CancellationToken>()))
             .Returns(Enumerable.Empty<PairSimilarityInfo>());
 
         await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -552,10 +554,10 @@ public class MainViewModelTests : IDisposable
     [Fact]
     public async Task OpenCommand_WithPaths_SetsThumbnailGridVisibleAndPairGridCollapsed()
     {
-        var outPaths = Enumerable.Empty<string>();
+        _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
         _mockLoadingOps
-            .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-            .Returns(true);
+            .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+            .Returns(new List<FileInfo>());
 
         _mockDbService.Setup(d => d.IsAvailable).Returns(false);
 
@@ -566,13 +568,15 @@ public class MainViewModelTests : IDisposable
                 It.IsAny<IPhotoDbService>(),
                 It.IsAny<IProgress<double>>(),
                 out completedTask,
-                It.IsAny<int>()))
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
             .Returns(new ConcurrentDictionary<string, Mat>());
 
         _mockCalcOps
             .Setup(c => c.CreateMatchCollection(
                 It.IsAny<IDictionary<string, Mat>>(),
-                It.IsAny<IProgress<double>>()))
+                It.IsAny<IProgress<double>>(),
+                It.IsAny<CancellationToken>()))
             .Returns(Enumerable.Empty<PairSimilarityInfo>());
 
         await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -597,10 +601,10 @@ public class MainViewModelTests : IDisposable
         var path1 = System.IO.Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1) });
 
             // DB unavailable so cached pairs path is skipped.
             _mockDbService.Setup(d => d.IsAvailable).Returns(false);
@@ -622,10 +626,10 @@ public class MainViewModelTests : IDisposable
         var path2 = System.IO.Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(false);
 
@@ -636,13 +640,15 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(Enumerable.Empty<PairSimilarityInfo>());
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -653,7 +659,8 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out It.Ref<Task>.IsAny,
-                    It.IsAny<int>()),
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()),
                 Times.Once);
         }
         finally
@@ -670,10 +677,10 @@ public class MainViewModelTests : IDisposable
         var path2 = System.IO.Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(false);
 
@@ -684,13 +691,15 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(Enumerable.Empty<PairSimilarityInfo>());
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -698,7 +707,8 @@ public class MainViewModelTests : IDisposable
             _mockCalcOps.Verify(
                 c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()),
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()),
                 Times.Once);
         }
         finally
@@ -723,10 +733,10 @@ public class MainViewModelTests : IDisposable
         var path2 = System.IO.Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(false);
 
@@ -740,13 +750,15 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new[] { highScoreMatch });
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -767,10 +779,10 @@ public class MainViewModelTests : IDisposable
         var path2 = System.IO.Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(false);
 
@@ -783,13 +795,15 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new[] { highScoreMatch });
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -812,10 +826,10 @@ public class MainViewModelTests : IDisposable
         var path2 = System.IO.Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(false);
 
@@ -829,13 +843,15 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new[] { goodMatch });
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -857,10 +873,10 @@ public class MainViewModelTests : IDisposable
         var path2 = System.IO.Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(false);
 
@@ -873,13 +889,15 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new[] { goodMatch });
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -900,10 +918,10 @@ public class MainViewModelTests : IDisposable
         var path2 = System.IO.Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(false);
 
@@ -916,13 +934,15 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new[] { goodMatch });
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -944,10 +964,10 @@ public class MainViewModelTests : IDisposable
         var path2 = System.IO.Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(false);
 
@@ -960,13 +980,15 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new[] { borderMatch });
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -995,10 +1017,10 @@ public class MainViewModelTests : IDisposable
         var path2 = System.IO.Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             // DB is explicitly NOT available.
             _mockDbService.Setup(d => d.IsAvailable).Returns(false);
@@ -1012,13 +1034,15 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new[] { match });
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -1041,10 +1065,10 @@ public class MainViewModelTests : IDisposable
         var path2 = System.IO.Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(true);
 
@@ -1063,13 +1087,15 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new[] { maxMatch });
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -1092,10 +1118,10 @@ public class MainViewModelTests : IDisposable
         var path2 = System.IO.Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(true);
 
@@ -1126,13 +1152,15 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new[] { goodMatch });
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -1155,10 +1183,10 @@ public class MainViewModelTests : IDisposable
         var path2 = System.IO.Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(true);
 
@@ -1180,13 +1208,15 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new[] { goodMatch });
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -1217,10 +1247,10 @@ public class MainViewModelTests : IDisposable
         var path2 = System.IO.Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             // DB unavailable -> TryLoadCachedPairsAsync returns false -> RunAnalysisAsync runs.
             _mockDbService.Setup(d => d.IsAvailable).Returns(false);
@@ -1232,13 +1262,15 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(Enumerable.Empty<PairSimilarityInfo>());
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -1250,7 +1282,8 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out It.Ref<Task>.IsAny,
-                    It.IsAny<int>()),
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()),
                 Times.Once);
         }
         finally
@@ -1267,10 +1300,10 @@ public class MainViewModelTests : IDisposable
         var path2 = System.IO.Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(true);
             // Empty cached results -> TryLoadCachedPairsAsync returns false.
@@ -1289,13 +1322,15 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(Enumerable.Empty<PairSimilarityInfo>());
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -1306,7 +1341,8 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out It.Ref<Task>.IsAny,
-                    It.IsAny<int>()),
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()),
                 Times.Once);
         }
         finally
@@ -1323,10 +1359,10 @@ public class MainViewModelTests : IDisposable
         var path2 = System.IO.Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(true);
 
@@ -1354,7 +1390,8 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out It.Ref<Task>.IsAny,
-                    It.IsAny<int>()),
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()),
                 Times.Never);
 
             Assert.Single(_vm.PairDataCollection);
@@ -1373,10 +1410,10 @@ public class MainViewModelTests : IDisposable
         var path2 = System.IO.Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(true);
 
@@ -1413,10 +1450,10 @@ public class MainViewModelTests : IDisposable
         var path2 = System.IO.Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(true);
 
@@ -1452,10 +1489,10 @@ public class MainViewModelTests : IDisposable
         var path2 = System.IO.Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(true);
 
@@ -1485,13 +1522,15 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(Enumerable.Empty<PairSimilarityInfo>());
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -1502,7 +1541,8 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out It.Ref<Task>.IsAny,
-                    It.IsAny<int>()),
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()),
                 Times.Once);
         }
         finally
@@ -1520,10 +1560,10 @@ public class MainViewModelTests : IDisposable
         var path2 = System.IO.Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(true);
 
@@ -1553,13 +1593,15 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(Enumerable.Empty<PairSimilarityInfo>());
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -1571,7 +1613,8 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out It.Ref<Task>.IsAny,
-                    It.IsAny<int>()),
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()),
                 Times.Once);
         }
         finally
@@ -1818,10 +1861,10 @@ public class MainViewModelTests : IDisposable
         var path2 = System.IO.Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(false);
 
@@ -1832,13 +1875,15 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(Enumerable.Empty<PairSimilarityInfo>());
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
@@ -1852,7 +1897,8 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out It.Ref<Task>.IsAny,
-                    It.IsAny<int>()),
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()),
                 Times.Exactly(2));
         }
         finally
@@ -1869,10 +1915,10 @@ public class MainViewModelTests : IDisposable
         var path1 = System.IO.Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(false);
 
@@ -1896,10 +1942,10 @@ public class MainViewModelTests : IDisposable
         var path2 = System.IO.Path.GetTempFileName();
         try
         {
-            IEnumerable<string> outPaths = new[] { path1, path2 };
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
             _mockLoadingOps
-                .Setup(l => l.GetAllPaths(out outPaths, It.IsAny<string>()))
-                .Returns(true);
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
 
             _mockDbService.Setup(d => d.IsAvailable).Returns(false);
 
@@ -1910,13 +1956,15 @@ public class MainViewModelTests : IDisposable
                     It.IsAny<IPhotoDbService>(),
                     It.IsAny<IProgress<double>>(),
                     out completedTask,
-                    It.IsAny<int>()))
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(new ConcurrentDictionary<string, Mat>());
 
             _mockCalcOps
                 .Setup(c => c.CreateMatchCollection(
                     It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>()))
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(Enumerable.Empty<PairSimilarityInfo>());
 
             await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);

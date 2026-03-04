@@ -74,7 +74,11 @@ public class PhotoDbServiceGapTests : IDisposable
 
         foreach (var path in _tempFiles)
         {
-            try { if (File.Exists(path)) File.Delete(path); } catch { }
+            try { if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            } catch { }
         }
     }
 

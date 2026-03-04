@@ -47,18 +47,39 @@ public class ImageInfo : DisposableObject, INotifyPropertyChanged
         try
         {
             var fileInfo = new FileInfo(path);
-            if (fileInfo.Exists)
-            {
-                FileSize = fileInfo.Length;
-                LastModifiedUtc = fileInfo.LastWriteTimeUtc;
-            }
+
+            FileSize = fileInfo.Length;
+            LastModifiedUtc = fileInfo.LastWriteTimeUtc;
         }
         catch (Exception ex)
         {
             Trace.WriteLine($"Failed to read FileInfo for '{path}': {ex.Message}");
         }
 
-        PrepareCommands();
+        DefineCommands();
+    }
+
+    /// <summary>
+    /// Fast constructor that uses pre-fetched FileInfo metadata.
+    /// Avoids per-file stat calls on network shares where DirectoryInfo.EnumerateFiles()
+    /// already populated the FileInfo from the directory listing.
+    /// </summary>
+    public ImageInfo(FileInfo fileInfo, IEventAggregator eventAggregator)
+    {
+        _eventAggregator = eventAggregator;
+        FilePath = fileInfo.FullName;
+
+        try
+        {
+            FileSize = fileInfo.Length;
+            LastModifiedUtc = fileInfo.LastWriteTimeUtc;
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine($"Failed to read FileInfo for '{fileInfo.FullName}': {ex.Message}");
+        }
+
+        DefineCommands();
     }
 
     public event PropertyChangedEventHandler PropertyChanged;
@@ -254,7 +275,7 @@ public class ImageInfo : DisposableObject, INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
-    private void PrepareCommands()
+    private void DefineCommands()
     {
         ImageDoubleClick = new DelegateCommand(() =>
         {
