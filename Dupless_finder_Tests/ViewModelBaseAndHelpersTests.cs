@@ -98,7 +98,7 @@ internal sealed class TestableViewModel : ViewModelBase
 /// Concrete subclass of DisposableObject that counts how many times
 /// Clean() is called, so we can assert single-call semantics.
 /// </summary>
-internal sealed class TrackingDisposable : DisposableObject
+internal sealed class TrackingDisposable : Dupples_finder_UI.Modules.Helpers.DisposableObject
 {
     public int CleanCallCount { get; private set; }
 
@@ -279,10 +279,10 @@ public class DisposableObjectTests
     {
         // The base DisposableObject.Clean() is an empty virtual method;
         // instantiating the base class directly and disposing exercises it.
-        var obj = new DisposableObject();
+        var obj = new Dupples_finder_UI.Modules.Helpers.DisposableObject();
 
-        var ex = Record.Exception(() => obj.Dispose());
-        Assert.Null(ex);
+        // No exception should be thrown when disposing
+        obj.Dispose();
     }
 
     [Fact]

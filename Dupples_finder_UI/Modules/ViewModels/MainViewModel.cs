@@ -4,6 +4,9 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reactive.Concurrency;
+using System.Reactive.Linq;
+using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -64,6 +67,11 @@ public class MainViewModel : ViewModelBase
 
     private Timer _t;
 
+    private IDisposable _scoreThresholdSubscription;
+    private IDisposable _pipelineSubscription;
+    private readonly IScheduler _backgroundScheduler;
+    private readonly IScheduler _uiScheduler;
+
     private Visibility _isProgrVisible = Visibility.Collapsed;
 
     private Visibility _pairGridVisibility = Visibility.Collapsed;
@@ -75,7 +83,9 @@ public class MainViewModel : ViewModelBase
         IPhotoDbService dbService,
         ICalcOperations calcOperations,
         ILoadingOperations loadingOperations,
-        IThumbnailService thumbnailService)
+        IThumbnailService thumbnailService,
+        IScheduler backgroundScheduler = null,
+        IScheduler uiScheduler = null)
         : base(eventAggregator)
     {
         _dbService = dbService;
@@ -83,11 +93,27 @@ public class MainViewModel : ViewModelBase
         _loadingOperations = loadingOperations;
         _thumbnailService = thumbnailService;
 
+        _backgroundScheduler = backgroundScheduler ?? TaskPoolScheduler.Default;
+
+        _uiScheduler = uiScheduler
+            ?? (SynchronizationContext.Current != null
+                ? new SynchronizationContextScheduler(SynchronizationContext.Current)
+                : TaskPoolScheduler.Default as IScheduler);
+
         ThumbnailSize = 200;
         IsLoaded = true;
         PairDataCollection = new List<ImagePair>();
         ImageCollection = [];
         StartMemoryAmountPublishing();
+
+        _scoreThresholdSubscription = Observable
+            .FromEventPattern<PropertyChangedEventHandler, PropertyChangedEventArgs>(
+                h => PropertyChanged += h,
+                h => PropertyChanged -= h)
+            .Where(e => e.EventArgs.PropertyName == nameof(ScoreThreshold))
+            .Throttle(TimeSpan.FromMilliseconds(200), _backgroundScheduler)
+            .ObserveOn(_uiScheduler)
+            .Subscribe(_ => RefilterPairs());
 
         PreviewSize = GridWidth;
         _ = InitializeDbAsync();
@@ -191,13 +217,7 @@ public class MainViewModel : ViewModelBase
     public double ScoreThreshold
     {
         get => _scoreThreshold;
-        set
-        {
-            if (SetProperty(ref _scoreThreshold, value))
-            {
-                RefilterPairs();
-            }
-        }
+        set => SetProperty(ref _scoreThreshold, value);
     }
 
     public string StatusText
@@ -304,6 +324,10 @@ public class MainViewModel : ViewModelBase
     {
         if (disposing)
         {
+            _scoreThresholdSubscription?.Dispose();
+            _scoreThresholdSubscription = null;
+            _pipelineSubscription?.Dispose();
+            _pipelineSubscription = null;
             _cts?.Cancel();
             _cts?.Dispose();
             _cts = null;
@@ -488,12 +512,10 @@ public class MainViewModel : ViewModelBase
                 return;
             }
 
-            var imageList = await BuildImageListAsync(fileInfos, ct);
+            _dataCollectionFlat = new List<ImageInfo>(fileInfos.Count);
+            ImageCollection = [];
 
-            _dataCollectionFlat = imageList;
-            ImageCollection = new ObservableCollection<ImageInfo>(imageList);
-
-            await LoadAllThumbnailsAsync(imageList, ct);
+            await BuildAndLoadStreamingAsync(fileInfos, ct);
 
             ct.ThrowIfCancellationRequested();
 
@@ -533,50 +555,58 @@ public class MainViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Phase 2: Creates ImageInfo objects from pre-fetched FileInfo metadata in background.
-    /// Uses the FileInfo constructor overload to avoid per-file stat calls on network shares.
+    /// Streaming pipeline: creates ImageInfo objects and loads thumbnails incrementally.
+    /// Items appear in ImageCollection as soon as they're created; thumbnails load concurrently.
     /// </summary>
-    private async Task<List<ImageInfo>> BuildImageListAsync(List<FileInfo> fileInfos, CancellationToken ct)
+    private async Task BuildAndLoadStreamingAsync(List<FileInfo> fileInfos, CancellationToken ct)
     {
         var totalFiles = fileInfos.Count;
-        StatusText = $"Reading file info... 0/{totalFiles}";
-        CalcProgress = 0;
         var ea = EventAggregator;
+        var tcs = new TaskCompletionSource<bool>();
+        int createdCount = 0;
+        int loadedCount = 0;
 
-        return await Task.Run(() =>
-        {
-            var list = new List<ImageInfo>(totalFiles);
-            var progressStep = totalFiles > 0 ? 100.0 / totalFiles : 100.0;
-            var reportInterval = Math.Max(totalFiles / 200, 1);
+        var cancel = Observable.Create<bool>(obs =>
+            ct.Register(() => { obs.OnNext(true); obs.OnCompleted(); }));
 
-            for (var i = 0; i < fileInfos.Count; i++)
+        _pipelineSubscription = fileInfos
+            .ToObservable(_backgroundScheduler)
+            .TakeUntil(cancel)
+            .Select(fi => new ImageInfo(fi, ea))
+            .ObserveOn(_uiScheduler)
+            .Do(img =>
             {
-                ct.ThrowIfCancellationRequested();
-                list.Add(new ImageInfo(fileInfos[i], ea));
+                _dataCollectionFlat.Add(img);
+                ImageCollection.Add(img);
+                UpdateStatus(ref createdCount, 0.0, "image");
+            })
+            .ObserveOn(_backgroundScheduler)
+            .Select(img => Observable.FromAsync(async () =>
+            {
+                await img.LoadThumbnailAsync(_dbService, _thumbnailService);
+                return img;
+            }))
+            .Merge(Math.Max(Environment.ProcessorCount - 1, 1))
+            .ObserveOn(_uiScheduler)
+            .Do(_ => UpdateStatus(ref loadedCount, 50.0, "thumbnail"))
+            .Subscribe(
+                _ => { },
+                ex => tcs.TrySetException(ex),
+                () => tcs.TrySetResult(!ct.IsCancellationRequested));
 
-                if (i % reportInterval == 0 || i == totalFiles - 1)
-                {
-                    var idx = i;
-                    var progress = (i + 1) * progressStep;
-                    Application.Current?.Dispatcher?.BeginInvoke(new Action(() =>
-                    {
-                        CalcProgress = Math.Min(progress, 100.0);
-                        StatusText = $"Reading file info... {idx + 1}/{totalFiles}";
-                    }));
-                }
-            }
+        var completed = await tcs.Task;
+        if (!completed)
+        {
+            throw new OperationCanceledException(ct);
+        }
 
-            return list;
-        }, ct);
-    }
+        return;
 
-    /// <summary>
-    /// Phase 3: Loads thumbnails for all images in background with progress reporting.
-    /// </summary>
-    private async Task LoadAllThumbnailsAsync(IList<ImageInfo> imageList, CancellationToken ct)
-    {
-        StatusText = $"Loading thumbnails... 0/{imageList.Count}";
-        await Task.Run(() => LoadThumbnailsInBackground(imageList, ct), ct);
+        void UpdateStatus(ref int location, double baseLineProgress, string itemName)
+        {
+            CalcProgress = baseLineProgress + (double)Interlocked.Increment(ref location) / totalFiles * 50.0;
+            StatusText = $"Loading {itemName}s... {location}/{totalFiles}";
+        }
     }
 
     private async Task ExecuteUndo()
@@ -605,7 +635,7 @@ public class MainViewModel : ViewModelBase
             ImageCollection.Add(restoredImage);
 
             // Load thumbnail in background
-            await Task.Run(() => restoredImage.LoadThumbnail(_dbService, _thumbnailService));
+            await restoredImage.LoadThumbnailAsync(_dbService, _thumbnailService);
 
             // Try to reload cached pairs (will quickly restore pairs from DB hash)
             await TryLoadCachedPairsAsync();
@@ -644,56 +674,6 @@ public class MainViewModel : ViewModelBase
         {
             Trace.WriteLine($"DB initialization failed: {ex.Message}");
         }
-    }
-
-    /// <summary>
-    /// Loads thumbnails for all images in background with progress reporting.
-    /// Uses DB cache first, then OS Shell API for generation.
-    /// Designed to be called from a background thread via Task.Run.
-    /// </summary>
-    private void LoadThumbnailsInBackground(IList<ImageInfo> images, CancellationToken ct = default)
-    {
-        var imageCount = images.Count;
-
-        Application.Current?.Dispatcher?.BeginInvoke(new Action(() =>
-        {
-            CalcProgress = 0;
-            IsProgressVisible = Visibility.Visible;
-        }));
-
-        var progressStep = imageCount > 0 ? 100.0 / imageCount : 100.0;
-        int[] completed = [0];
-
-        Parallel.ForEach(images,
-            new ParallelOptions
-            {
-                MaxDegreeOfParallelism = Math.Max(Environment.ProcessorCount - 1, 1),
-                CancellationToken = ct
-            },
-            info =>
-            {
-                Thread.CurrentThread.Priority = ThreadPriority.BelowNormal;
-
-                info.LoadThumbnail(_dbService, _thumbnailService);
-
-                var done = Interlocked.Increment(ref completed[0]);
-                var progress = done * progressStep;
-
-                if (done % 10 == 0)
-                {
-                Application.Current?.Dispatcher?.BeginInvoke(new Action(() =>
-                {
-                    CalcProgress = Math.Min(progress, 100.0);
-                    StatusText = $"Loading thumbnails... {done}/{imageCount}";
-                }));
-                }
-            });
-
-        Application.Current?.Dispatcher?.BeginInvoke(new Action(() =>
-        {
-            CalcProgress = 100;
-            IsProgressVisible = Visibility.Collapsed;
-        }));
     }
 
     private void OnOpenImagePreview(OpenImagePreviewPayload payload)
@@ -808,20 +788,47 @@ public class MainViewModel : ViewModelBase
             return;
         }
 
-        foreach (var match in matches)
+        var matchList = matches.Where(m => m.Match < double.MaxValue).ToList();
+        if (matchList.Count == 0)
         {
-            if (match.Match >= double.MaxValue)
-            {
-                continue;
-            }
+            return;
+        }
 
+        // Collect all unique file paths
+        var uniquePaths = new HashSet<string>();
+        foreach (var match in matchList)
+        {
+            uniquePaths.Add(match.Hash1.Key);
+            uniquePaths.Add(match.Hash2.Key);
+        }
+
+        // Build path-to-ID lookup with one DB call per unique path
+        var pathToId = new Dictionary<string, int>(uniquePaths.Count);
+        foreach (var path in uniquePaths)
+        {
             try
             {
-                var photo1 = await _dbService.GetCachedPhotoAsync(match.Hash1.Key);
-                var photo2 = await _dbService.GetCachedPhotoAsync(match.Hash2.Key);
-                if (photo1 != null && photo2 != null)
+                var photo = await _dbService.GetCachedPhotoAsync(path);
+                if (photo != null)
                 {
-                    await _dbService.StoreSimilarityAsync(photo1.Id, photo2.Id, match.Match);
+                    pathToId[path] = photo.Id;
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"DB photo lookup error for '{path}': {ex.Message}");
+            }
+        }
+
+        // Store similarity scores using pre-resolved IDs
+        foreach (var match in matchList)
+        {
+            try
+            {
+                if (pathToId.TryGetValue(match.Hash1.Key, out var id1) &&
+                    pathToId.TryGetValue(match.Hash2.Key, out var id2))
+                {
+                    await _dbService.StoreSimilarityAsync(id1, id2, match.Match);
                 }
             }
             catch (Exception ex)

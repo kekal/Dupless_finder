@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -101,6 +102,7 @@ public class ImageInfo : DisposableObject, INotifyPropertyChanged
         get => _image;
         private set
         {
+            if (ReferenceEquals(_image, value)) return;
             _image = value;
             OnPropertyChanged();
         }
@@ -131,12 +133,11 @@ public class ImageInfo : DisposableObject, INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Loads the thumbnail using the DB-first, Shell-fallback pipeline.
-    /// 1. Check DB for cached thumbnail
-    /// 2. If not in DB, generate
-    /// 3. Store generated thumbnail to DB
+    /// Loads the thumbnail using the DB-first, Shell-fallback pipeline and sets <see cref="Image"/>.
+    /// The thumbnail is frozen for cross-thread safety; the caller must invoke this
+    /// so that the continuation (Image setter) runs on the UI thread.
     /// </summary>
-    public void LoadThumbnail(IPhotoDbService dbService, IThumbnailService thumbnailService)
+    public async Task LoadThumbnailAsync(IPhotoDbService dbService, IThumbnailService thumbnailService)
     {
         try
         {
@@ -146,8 +147,7 @@ public class ImageInfo : DisposableObject, INotifyPropertyChanged
             {
                 try
                 {
-                    var cached = dbService.GetCachedPhotoByFingerprintAsync(FileSize, LastModifiedUtc)
-                        .GetAwaiter().GetResult();
+                    var cached = await dbService.GetCachedPhotoByFingerprintAsync(FileSize, LastModifiedUtc);
                     if (cached?.Thumbnail is { Length: > 0 })
                     {
                         thumbnail = thumbnailService.BytesToBitmapSource(cached.Thumbnail);
@@ -170,8 +170,7 @@ public class ImageInfo : DisposableObject, INotifyPropertyChanged
                         var thumbBytes = thumbnailService.EncodeBitmapSourceToBytes(thumbnail);
                         if (thumbBytes is { Length: > 0 })
                         {
-                            dbService.CacheThumbnailAsync(FileSize, LastModifiedUtc, FilePath, thumbBytes)
-                                .GetAwaiter().GetResult();
+                            await dbService.CacheThumbnailAsync(FileSize, LastModifiedUtc, FilePath, thumbBytes);
                         }
                     }
                     catch (Exception ex)
@@ -191,7 +190,6 @@ public class ImageInfo : DisposableObject, INotifyPropertyChanged
                     if (_storedMat != null && !_storedMat.Empty())
                     {
                         thumbnail = OpenCvSharp.WpfExtensions.BitmapSourceConverter.ToBitmapSource(_storedMat);
-                        thumbnail.Freeze();
                     }
                 }
                 finally
@@ -200,23 +198,16 @@ public class ImageInfo : DisposableObject, INotifyPropertyChanged
                 }
             }
 
-            if (thumbnail != null)
+            if (thumbnail is { IsFrozen: false })
             {
-                // Ensure it's frozen for cross-thread access
-                if (!thumbnail.IsFrozen)
-                {
-                    thumbnail.Freeze();
-                }
-
-                Application.Current?.Dispatcher?.BeginInvoke(new Action(() =>
-                {
-                    Image = thumbnail;
-                }));
+                thumbnail.Freeze();
             }
+
+            Image = thumbnail;
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"LoadThumbnail failed for '{FileName}': {ex.Message}");
+            Trace.WriteLine($"LoadThumbnailAsync failed for '{FileName}': {ex.Message}");
         }
     }
 

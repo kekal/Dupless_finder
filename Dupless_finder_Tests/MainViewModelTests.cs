@@ -1232,6 +1232,103 @@ public class MainViewModelTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task StoreSimilarityResultsAsync_WithMultipleMatches_DoesOneLookupPerUniquePath()
+    {
+        // This test verifies the optimization: StoreSimilarityResultsAsync should do
+        // exactly one DB lookup per unique path, not one per match.
+        // Example: if path1 appears in 3 matches and path2 appears in 2 matches,
+        // we should see exactly 2 GetCachedPhotoAsync calls (one for each unique path),
+        // even though there are 3 matches total.
+        var path1 = System.IO.Path.GetTempFileName();
+        var path2 = System.IO.Path.GetTempFileName();
+        var path3 = System.IO.Path.GetTempFileName();
+        try
+        {
+            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
+            _mockLoadingOps
+                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
+                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2), new FileInfo(path3) });
+
+            _mockDbService.Setup(d => d.IsAvailable).Returns(true);
+
+            var photo1 = new Photo { Id = 1, FilePath = path1 };
+            var photo2 = new Photo { Id = 2, FilePath = path2 };
+            var photo3 = new Photo { Id = 3, FilePath = path3 };
+
+            _mockDbService
+                .Setup(d => d.GetCachedPhotoAsync(path1))
+                .ReturnsAsync(photo1);
+            _mockDbService
+                .Setup(d => d.GetCachedPhotoAsync(path2))
+                .ReturnsAsync(photo2);
+            _mockDbService
+                .Setup(d => d.GetCachedPhotoAsync(path3))
+                .ReturnsAsync(photo3);
+            _mockDbService
+                .Setup(d => d.StoreSimilarityAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<double>()))
+                .Returns(Task.CompletedTask);
+
+            _mockDbService
+                .Setup(d => d.GetCachedResultsAsync())
+                .ReturnsAsync(new List<SimilarityResult>());
+
+            // Create three matches: path1-path2, path1-path3, path2-path3
+            // This results in 3 unique paths: path1, path2, path3
+            var match1 = TestHelpers.BuildPairSimilarityInfo(path1, path2, 25.0);
+            var match2 = TestHelpers.BuildPairSimilarityInfo(path1, path3, 35.0);
+            var match3 = TestHelpers.BuildPairSimilarityInfo(path2, path3, 45.0);
+
+            var completedTask = Task.CompletedTask;
+            _mockCalcOps
+                .Setup(c => c.CalcSiftHashes(
+                    It.IsAny<IEnumerable<ImageInfo>>(),
+                    It.IsAny<IPhotoDbService>(),
+                    It.IsAny<IProgress<double>>(),
+                    out completedTask,
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
+                .Returns(new ConcurrentDictionary<string, Mat>());
+
+            _mockCalcOps
+                .Setup(c => c.CreateMatchCollection(
+                    It.IsAny<IDictionary<string, Mat>>(),
+                    It.IsAny<IProgress<double>>(),
+                    It.IsAny<CancellationToken>()))
+                .Returns(new[] { match1, match2, match3 });
+
+            await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
+
+            // Verify that GetCachedPhotoAsync was called exactly 3 times (once per unique path)
+            // not 6 times (twice per match for 3 matches).
+            _mockDbService.Verify(
+                d => d.GetCachedPhotoAsync(It.IsAny<string>()),
+                Times.Exactly(3));
+
+            // Verify each path was looked up exactly once
+            _mockDbService.Verify(d => d.GetCachedPhotoAsync(path1), Times.Once);
+            _mockDbService.Verify(d => d.GetCachedPhotoAsync(path2), Times.Once);
+            _mockDbService.Verify(d => d.GetCachedPhotoAsync(path3), Times.Once);
+
+            // Verify all 3 matches were stored
+            _mockDbService.Verify(
+                d => d.StoreSimilarityAsync(1, 2, 25.0),
+                Times.Once);
+            _mockDbService.Verify(
+                d => d.StoreSimilarityAsync(1, 3, 35.0),
+                Times.Once);
+            _mockDbService.Verify(
+                d => d.StoreSimilarityAsync(2, 3, 45.0),
+                Times.Once);
+        }
+        finally
+        {
+            System.IO.File.Delete(path1);
+            System.IO.File.Delete(path2);
+            System.IO.File.Delete(path3);
+        }
+    }
+
     #endregion
 
     // ===========================================================================

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using Dupples_finder_UI.DTO;
@@ -8,6 +9,7 @@ using Dupples_finder_UI.Modules.Helpers;
 using Dupples_finder_UI.Modules.ViewModels;
 using Dupples_finder_UI.Services.Interfaces;
 using Moq;
+using OpenCvSharp;
 using Prism.Events;
 using Xunit;
 using Xunit.Abstractions;
@@ -226,7 +228,7 @@ public class ImageInfoGapTests : IDisposable
     // -----------------------------------------------------------------
 
     [Fact]
-    public void LoadThumbnail_WhenCacheThumbnailAsyncThrows_DoesNotThrow()
+    public async Task LoadThumbnail_WhenCacheThumbnailAsyncThrows_DoesNotThrow()
     {
         // Arrange — need a real file so FileInfo metadata is valid.
         var filePath = CreateTempFile("thumb_store_err.jpg", byteCount: 128);
@@ -272,14 +274,14 @@ public class ImageInfoGapTests : IDisposable
             .Returns(fakeBytes);
 
         // Act — the catch on lines 165-168 must absorb the exception.
-        var ex = Record.Exception(
-            () => info.LoadThumbnail(mockDb.Object, mockThumb.Object));
+        var ex = await Record.ExceptionAsync(
+            () => info.LoadThumbnailAsync(mockDb.Object, mockThumb.Object));
 
         Assert.Null(ex);
     }
 
     [Fact]
-    public void LoadThumbnail_WhenCacheThumbnailAsyncThrows_EncodingWasAttempted()
+    public async Task LoadThumbnail_WhenCacheThumbnailAsyncThrows_EncodingWasAttempted()
     {
         // Same setup as above; additionally verify that encoding was called
         // (proving the code reached the store block before catching the error).
@@ -323,7 +325,7 @@ public class ImageInfoGapTests : IDisposable
                 It.IsAny<System.Windows.Media.Imaging.BitmapSource>()))
             .Returns(fakeBytes);
 
-        info.LoadThumbnail(mockDb.Object, mockThumb.Object);
+        await info.LoadThumbnailAsync(mockDb.Object, mockThumb.Object);
 
         // EncodeBitmapSourceToBytes must have been called before the store threw.
         mockThumb.Verify(
@@ -331,7 +333,7 @@ public class ImageInfoGapTests : IDisposable
     }
 
     [Fact]
-    public void LoadThumbnail_WhenCacheThumbnailAsyncThrows_CachingWasAttempted()
+    public async Task LoadThumbnail_WhenCacheThumbnailAsyncThrows_CachingWasAttempted()
     {
         // Verify that CacheThumbnailAsync was actually called (i.e., the code
         // entered the store branch) before the exception was swallowed.
@@ -375,7 +377,7 @@ public class ImageInfoGapTests : IDisposable
                 It.IsAny<System.Windows.Media.Imaging.BitmapSource>()))
             .Returns(fakeBytes);
 
-        info.LoadThumbnail(mockDb.Object, mockThumb.Object);
+        await info.LoadThumbnailAsync(mockDb.Object, mockThumb.Object);
 
         mockDb.Verify(
             d => d.CacheThumbnailAsync(

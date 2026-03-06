@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Dupples_finder_UI.Data;
 using Dupples_finder_UI.Data.Entities;
 using Dupples_finder_UI.Services.Interfaces;
+using OpenCvSharp;
 using Xunit;
 
 namespace Dupless_finder_Tests;

@@ -23,5 +23,6 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Prism.DryIoc" Version="9.0.537" />
+    <PackageReference Include="System.Reactive" Version="6.0.1" />
   </ItemGroup>
 </Project>
