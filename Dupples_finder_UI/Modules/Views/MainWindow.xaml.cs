@@ -1,7 +1,7 @@
 using System;
-using System.Diagnostics;
 using System.Windows.Input;
 using Dupples_finder_UI.Modules.ViewModels;
+using Dupples_finder_UI.Services;
 
 namespace Dupples_finder_UI.Modules.Views;
 
@@ -15,7 +15,7 @@ public partial class MainWindow
         }
         catch (Exception e)
         {
-            Trace.WriteLine(e.Message);
+            PerfLogger.Log(e.Message);
         }
     }
 

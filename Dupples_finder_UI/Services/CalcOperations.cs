@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -33,7 +32,7 @@ public class CalcOperations : ICalcOperations
     /// </summary>
     public ConcurrentDictionary<string, Mat> CalcSiftHashes(IEnumerable<ImageInfo> infos, IPhotoDbService dbService, IProgress<double> progress, out Task result, int thumbSize = 256, CancellationToken ct = default)
     {
-        Trace.WriteLine("CalcSiftHashes started");
+        PerfLogger.Log("CalcSiftHashes started");
 
         EnablePublishingProgress(progress);
 
@@ -67,7 +66,7 @@ public class CalcOperations : ICalcOperations
                     }
                     catch (Exception ex)
                     {
-                        Trace.WriteLine($"Cache lookup failed for {info.FileName}: {ex.Message}");
+                        PerfLogger.Log($"Cache lookup failed for {info.FileName}: {ex.Message}");
                     }
                 }
 
@@ -105,7 +104,7 @@ public class CalcOperations : ICalcOperations
                         }
                         catch (Exception ex)
                         {
-                            Trace.WriteLine($"Cache store failed for {info.FileName}: {ex.Message}");
+                            PerfLogger.Log($"Cache store failed for {info.FileName}: {ex.Message}");
                         }
                     }
                 }
@@ -173,7 +172,7 @@ public class CalcOperations : ICalcOperations
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"Matcher failed: {ex.Message}");
+            PerfLogger.Log($"Matcher failed: {ex.Message}");
             return double.MaxValue;
         }
 

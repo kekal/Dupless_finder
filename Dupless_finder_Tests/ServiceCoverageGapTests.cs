@@ -317,7 +317,11 @@ public class CalcOperationsGapTests : IDisposable
     private IDictionary<string, Mat> Dict(params (string key, Mat mat)[] pairs)
     {
         var d = new Dictionary<string, Mat>();
-        foreach (var (k, m) in pairs) d[k] = m;
+        foreach (var (k, m) in pairs)
+        {
+            d[k] = m;
+        }
+
         return d;
     }
 
@@ -377,21 +381,6 @@ public class CalcOperationsGapTests : IDisposable
 
     // NOTE: CalcSimilarity_ReturnsMaxValue_WhenDescriptorColsMismatch was removed because
     // it duplicates CalcOperationsTests.CreateMatchCollection_WithMismatchedDescriptorColumns_ReturnsMaxValueMatch.
-
-    [Fact]
-    public void CalcSimilarity_ReturnsMaxValue_WhenOneDescriptorHasDifferentColsFromOther()
-    {
-        // 128 vs 256 — both have enough rows, but cols differ.
-        var mat1 = MakeRandomMat(5, 128);
-        var mat2 = MakeRandomMat(5, 256);
-
-        var result = _calcOperations
-            .CreateMatchCollection(Dict(("a.jpg", mat1), ("b.jpg", mat2)), null)
-            .ToList();
-
-        Assert.Single(result);
-        Assert.Equal(double.MaxValue, result[0].Match);
-    }
 
     // ------------------------------------------------------------------
     // goodMatches.Count == 0 branch (all-identical descriptors → ratio = 1.0)

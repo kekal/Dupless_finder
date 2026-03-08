@@ -1,7 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Reactive.Concurrency;
 using System.Threading;
 using System.Threading.Tasks;
 using Dupples_finder_UI.Modules.ViewModels;

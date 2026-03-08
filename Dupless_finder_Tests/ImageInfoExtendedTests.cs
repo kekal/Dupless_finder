@@ -202,10 +202,6 @@ public class ImageInfoExtendedTests : IDisposable
         mockDb
             .Setup(d => d.GetCachedPhotoByFingerprintAsync(It.IsAny<long>(), It.IsAny<DateTime>()))
             .ReturnsAsync((Photo)null);
-        mockDb
-            .Setup(d => d.CacheThumbnailAsync(It.IsAny<long>(), It.IsAny<DateTime>(), It.IsAny<string>(), It.IsAny<byte[]>()))
-            .ReturnsAsync(new Photo());
-
         var mockThumb = new Mock<IThumbnailService>();
         mockThumb
             .Setup(t => t.GetThumbnail(It.IsAny<string>(), It.IsAny<int>()))
@@ -217,9 +213,9 @@ public class ImageInfoExtendedTests : IDisposable
         // Act
         await imageInfo.LoadThumbnailAsync(mockDb.Object, mockThumb.Object);
 
-        // Assert – encoding and caching must both be called once.
+        // Assert – encoding and queuing for cache must both be called once.
         mockThumb.Verify(t => t.EncodeBitmapSourceToBytes(fakeBitmap), Times.Once);
-        mockDb.Verify(d => d.CacheThumbnailAsync(
+        mockDb.Verify(d => d.QueueThumbnailForCache(
             imageInfo.FileSize,
             imageInfo.LastModifiedUtc,
             filePath,
@@ -266,9 +262,9 @@ public class ImageInfoExtendedTests : IDisposable
         // Act
         await imageInfo.LoadThumbnailAsync(mockDb.Object, mockThumb.Object);
 
-        // Assert – CacheThumbnailAsync must NOT be called when bytes are empty.
+        // Assert – QueueThumbnailForCache must NOT be called when bytes are empty.
         mockDb.Verify(
-            d => d.CacheThumbnailAsync(It.IsAny<long>(), It.IsAny<DateTime>(), It.IsAny<string>(), It.IsAny<byte[]>()),
+            d => d.QueueThumbnailForCache(It.IsAny<long>(), It.IsAny<DateTime>(), It.IsAny<string>(), It.IsAny<byte[]>()),
             Times.Never);
 
         imageInfo.Dispose();
@@ -726,10 +722,6 @@ public class LoadThumbnailAsyncTests : IDisposable
         mockDb
             .Setup(d => d.GetCachedPhotoByFingerprintAsync(It.IsAny<long>(), It.IsAny<DateTime>()))
             .ReturnsAsync((Photo)null);
-        mockDb
-            .Setup(d => d.CacheThumbnailAsync(It.IsAny<long>(), It.IsAny<DateTime>(), It.IsAny<string>(), It.IsAny<byte[]>()))
-            .ReturnsAsync(new Photo());
-
         var mockThumb = new Mock<IThumbnailService>();
         mockThumb
             .Setup(t => t.GetThumbnail(It.IsAny<string>(), It.IsAny<int>()))
@@ -741,9 +733,9 @@ public class LoadThumbnailAsyncTests : IDisposable
         // Act
         await imageInfo.LoadThumbnailAsync(mockDb.Object, mockThumb.Object);
 
-        // Assert – encoding and caching must both be called once.
+        // Assert – encoding and queuing for cache must both be called once.
         mockThumb.Verify(t => t.EncodeBitmapSourceToBytes(fakeBitmap), Times.Once);
-        mockDb.Verify(d => d.CacheThumbnailAsync(
+        mockDb.Verify(d => d.QueueThumbnailForCache(
             imageInfo.FileSize,
             imageInfo.LastModifiedUtc,
             filePath,
@@ -790,9 +782,9 @@ public class LoadThumbnailAsyncTests : IDisposable
         // Act
         await imageInfo.LoadThumbnailAsync(mockDb.Object, mockThumb.Object);
 
-        // Assert – CacheThumbnailAsync must NOT be called when bytes are empty.
+        // Assert – QueueThumbnailForCache must NOT be called when bytes are empty.
         mockDb.Verify(
-            d => d.CacheThumbnailAsync(It.IsAny<long>(), It.IsAny<DateTime>(), It.IsAny<string>(), It.IsAny<byte[]>()),
+            d => d.QueueThumbnailForCache(It.IsAny<long>(), It.IsAny<DateTime>(), It.IsAny<string>(), It.IsAny<byte[]>()),
             Times.Never);
 
         imageInfo.Dispose();

@@ -1,11 +1,14 @@
 using System;
-using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
 using Dupples_finder_UI.Services.Interfaces;
+using MetadataExtractor;
+using MetadataExtractor.Formats.Exif;
+using MetadataExtractor.Formats.Jpeg;
 
 namespace Dupples_finder_UI.Services;
 
@@ -83,7 +86,7 @@ public class ThumbnailService : IThumbnailService
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"ThumbnailService.BytesToBitmapSource failed: {ex.Message}");
+            PerfLogger.Verbose($"ThumbnailService.BytesToBitmapSource skipped: {ex.Message}");
             return null;
         }
     }
@@ -101,7 +104,7 @@ public class ThumbnailService : IThumbnailService
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"ThumbnailService.EncodeBitmapSourceToBytes failed: {ex.Message}");
+            PerfLogger.Log($"ThumbnailService.EncodeBitmapSourceToBytes failed: {ex.Message}");
             return [];
         }
     }
@@ -113,12 +116,15 @@ public class ThumbnailService : IThumbnailService
             return null;
         }
 
+        using var op = PerfLogger.TimedVerbose("SHELL_API", minMs: 100);
+        op.Detail($"file={filePath}");
         var hBitmap = IntPtr.Zero;
         try
         {
             hBitmap = GetHBitmap(filePath, size);
             if (hBitmap == IntPtr.Zero)
             {
+                op.Detail("MISS");
                 return null;
             }
 
@@ -129,11 +135,13 @@ public class ThumbnailService : IThumbnailService
                 BitmapSizeOptions.FromEmptyOptions());
 
             source.Freeze();
+            op.Detail($"HIT | px={source.PixelWidth}x{source.PixelHeight}");
             return source;
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"ThumbnailService.GetThumbnail failed for '{filePath}': {ex.Message}");
+            op.Suppress();
+            PerfLogger.Log($"ThumbnailService.GetThumbnail failed for '{filePath}': {ex.Message}");
             return null;
         }
         finally
@@ -167,7 +175,7 @@ public class ThumbnailService : IThumbnailService
         }
         catch (Exception jpegEx)
         {
-            Trace.WriteLine($"ThumbnailService: JPEG encoding failed, trying PNG. Error: {jpegEx.Message}");
+            PerfLogger.Log($"ThumbnailService: JPEG encoding failed, trying PNG. Error: {jpegEx.Message}");
         }
 
         // Fallback to PNG
@@ -182,15 +190,143 @@ public class ThumbnailService : IThumbnailService
         }
         catch (Exception pngEx)
         {
-            Trace.WriteLine($"ThumbnailService: PNG encoding also failed. Error: {pngEx.Message}");
+            PerfLogger.Log($"ThumbnailService: PNG encoding also failed. Error: {pngEx.Message}");
             return [];
         }
     }
 
     /// <summary>
+    /// Extracts the embedded EXIF/JFIF thumbnail from the file header.
+    /// Reads only the first ~256 KB of the file, making it ideal for network shares
+    /// where reading the full multi-MB image would saturate the link.
+    /// Returns null if the format has no embedded thumbnail (e.g. PNG, BMP).
+    /// </summary>
+    public BitmapSource GetEmbeddedThumbnail(string filePath)
+    {
+        if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+        {
+            return null;
+        }
+
+        using var op = PerfLogger.TimedVerbose("EXIF", minMs: 100);
+        op.Detail($"file={filePath}");
+        try
+        {
+            byte[] headerBuffer;
+            int bytesRead;
+            using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                var readSize = (int)Math.Min(fs.Length, 256 * 1024);
+                headerBuffer = new byte[readSize];
+                bytesRead = fs.Read(headerBuffer, 0, readSize);
+                if (bytesRead < readSize)
+                {
+                    Array.Resize(ref headerBuffer, bytesRead);
+                }
+            }
+            op.Lap("read");
+
+            using var ms = new MemoryStream(headerBuffer);
+            var decoder = BitmapDecoder.Create(ms, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
+            op.Lap("decode");
+            op.Detail($"bytesRead={bytesRead}");
+
+            if (decoder.Frames?.Count > 0)
+            {
+                var thumb = decoder.Frames[0].Thumbnail;
+                if (thumb != null)
+                {
+                    if (!thumb.IsFrozen)
+                    {
+                        thumb.Freeze();
+                    }
+
+                    op.Detail($"HIT | px={thumb.PixelWidth}x{thumb.PixelHeight}");
+                    return thumb;
+                }
+            }
+
+            op.Detail("NO_THUMB");
+        }
+        catch (Exception ex)
+        {
+            op.Detail($"FAILED | error={ex.Message}");
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Extracts the embedded EXIF thumbnail as raw JPEG bytes using MetadataExtractor.
+    /// Pure managed code — fully thread-safe, runs in true parallel.
+    /// Reads only ~256KB of the file header from disk.
+    /// </summary>
+    public byte[] GetEmbeddedThumbnailBytes(string filePath)
+    {
+        if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+        {
+            return null;
+        }
+
+        using var op = PerfLogger.TimedVerbose("EXIF_RAW");
+        op.Detail($"file={filePath}");
+        try
+        {
+            byte[] header;
+            int bytesRead;
+            using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                var readSize = (int)Math.Min(fs.Length, 256 * 1024);
+                if (readSize < 12) { op.Suppress(); return null; }
+                header = new byte[readSize];
+                bytesRead = fs.Read(header, 0, readSize);
+            }
+            op.Lap("read");
+
+            byte[] thumbBytes = null;
+            using (var ms = new MemoryStream(header, 0, bytesRead))
+            {
+                var directories = JpegMetadataReader.ReadMetadata(ms);
+                var thumbDir = directories.OfType<ExifThumbnailDirectory>().FirstOrDefault();
+                if (thumbDir != null)
+                {
+                    var adjustedOffset = thumbDir.AdjustedThumbnailOffset;
+                    if (adjustedOffset.HasValue &&
+                        thumbDir.TryGetInt32(ExifThumbnailDirectory.TagThumbnailLength, out var length) &&
+                        length > 0 && length <= 200_000 &&
+                        adjustedOffset.Value >= 0 &&
+                        adjustedOffset.Value + length <= bytesRead)
+                    {
+                        thumbBytes = new byte[length];
+                        Buffer.BlockCopy(header, adjustedOffset.Value, thumbBytes, 0, length);
+                    }
+                }
+            }
+            op.Lap("parse");
+
+            op.Detail($"bytesRead={bytesRead}");
+            op.Detail($"thumbSize={thumbBytes?.Length ?? 0}");
+            op.Detail(thumbBytes != null ? "HIT" : "MISS");
+
+            // Only log fast misses when slow (>100ms); always log hits
+            if (thumbBytes == null && op.ElapsedMs <= 100)
+            {
+                op.Suppress();
+            }
+
+            return thumbBytes;
+        }
+        catch (Exception ex)
+        {
+            op.Detail($"FAILED | error={ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Obtains an HBITMAP from the Windows Shell for the given file.
-    /// First tries THUMBNAILONLY | BIGGERSIZEOK for maximum speed (cached/embedded thumbnails only).
-    /// Falls back to RESIZETOFIT which may read the full file but still uses the Shell pipeline.
+    /// Only uses THUMBNAILONLY | BIGGERSIZEOK for maximum speed (cached/embedded Shell thumbnails).
+    /// Does NOT fall back to RESIZETOFIT to avoid full-file reads over network shares.
     /// </summary>
     private static IntPtr GetHBitmap(string filePath, int size)
     {
@@ -205,7 +341,9 @@ public class ThumbnailService : IThumbnailService
 
             var nativeSize = new SIZE(size, size);
 
-            // First attempt: fast path -- only use cached/embedded thumbnails
+            // Fast path only — cached/embedded Shell thumbnails.
+            // RESIZETOFIT is intentionally omitted: it reads the full image file,
+            // which saturates network links for remote folders.
             var hr = factory.GetImage(nativeSize,
                 SIIGBF.SIIGBF_THUMBNAILONLY | SIIGBF.SIIGBF_BIGGERSIZEOK,
                 out var hBitmap);
@@ -215,20 +353,11 @@ public class ThumbnailService : IThumbnailService
                 return hBitmap;
             }
 
-            // Second attempt: allow the Shell to read and resize the full image
-            hr = factory.GetImage(nativeSize, SIIGBF.SIIGBF_RESIZETOFIT, out hBitmap);
-
-            if (hr == 0 && hBitmap != IntPtr.Zero)
-            {
-                return hBitmap;
-            }
-
-            Trace.WriteLine($"ThumbnailService: Shell GetImage failed for '{filePath}', HRESULT=0x{hr:X8}");
             return IntPtr.Zero;
         }
         catch (COMException ex)
         {
-            Trace.WriteLine($"ThumbnailService: COM error for '{filePath}': {ex.Message}");
+            PerfLogger.Log($"ThumbnailService: COM error for '{filePath}': {ex.Message}");
             return IntPtr.Zero;
         }
         catch (FileNotFoundException)
@@ -238,7 +367,7 @@ public class ThumbnailService : IThumbnailService
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"ThumbnailService: Unexpected error for '{filePath}': {ex.Message}");
+            PerfLogger.Log($"ThumbnailService: Unexpected error for '{filePath}': {ex.Message}");
             return IntPtr.Zero;
         }
         finally

@@ -9,7 +9,6 @@ using Dupples_finder_UI.Modules.Helpers;
 using Dupples_finder_UI.Modules.ViewModels;
 using Dupples_finder_UI.Services.Interfaces;
 using Moq;
-using OpenCvSharp;
 using Prism.Events;
 using Xunit;
 using Xunit.Abstractions;
@@ -228,7 +227,7 @@ public class ImageInfoGapTests : IDisposable
     // -----------------------------------------------------------------
 
     [Fact]
-    public async Task LoadThumbnail_WhenCacheThumbnailAsyncThrows_DoesNotThrow()
+    public async Task LoadThumbnail_WhenQueueThumbnailThrows_DoesNotThrow()
     {
         // Arrange — need a real file so FileInfo metadata is valid.
         var filePath = CreateTempFile("thumb_store_err.jpg", byteCount: 128);
@@ -257,12 +256,12 @@ public class ImageInfoGapTests : IDisposable
             .Setup(d => d.GetCachedPhotoByFingerprintAsync(
                 It.IsAny<long>(), It.IsAny<DateTime>()))
             .ReturnsAsync((Dupples_finder_UI.Data.Entities.Photo)null);
-        // CacheThumbnailAsync THROWS — this is what we're testing.
+        // QueueThumbnailForCache THROWS — this is what we're testing.
         mockDb
-            .Setup(d => d.CacheThumbnailAsync(
+            .Setup(d => d.QueueThumbnailForCache(
                 It.IsAny<long>(), It.IsAny<DateTime>(),
                 It.IsAny<string>(), It.IsAny<byte[]>()))
-            .ThrowsAsync(new InvalidOperationException("simulated store failure"));
+            .Throws(new InvalidOperationException("simulated store failure"));
 
         var mockThumb = new Mock<IThumbnailService>();
         mockThumb
@@ -273,7 +272,7 @@ public class ImageInfoGapTests : IDisposable
                 It.IsAny<System.Windows.Media.Imaging.BitmapSource>()))
             .Returns(fakeBytes);
 
-        // Act — the catch on lines 165-168 must absorb the exception.
+        // Act — the catch block must absorb the exception.
         var ex = await Record.ExceptionAsync(
             () => info.LoadThumbnailAsync(mockDb.Object, mockThumb.Object));
 
@@ -281,7 +280,7 @@ public class ImageInfoGapTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadThumbnail_WhenCacheThumbnailAsyncThrows_EncodingWasAttempted()
+    public async Task LoadThumbnail_WhenQueueThumbnailThrows_EncodingWasAttempted()
     {
         // Same setup as above; additionally verify that encoding was called
         // (proving the code reached the store block before catching the error).
@@ -311,10 +310,10 @@ public class ImageInfoGapTests : IDisposable
                 It.IsAny<long>(), It.IsAny<DateTime>()))
             .ReturnsAsync((Dupples_finder_UI.Data.Entities.Photo)null);
         mockDb
-            .Setup(d => d.CacheThumbnailAsync(
+            .Setup(d => d.QueueThumbnailForCache(
                 It.IsAny<long>(), It.IsAny<DateTime>(),
                 It.IsAny<string>(), It.IsAny<byte[]>()))
-            .ThrowsAsync(new InvalidOperationException("simulated store failure"));
+            .Throws(new InvalidOperationException("simulated store failure"));
 
         var mockThumb = new Mock<IThumbnailService>();
         mockThumb
@@ -333,9 +332,9 @@ public class ImageInfoGapTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadThumbnail_WhenCacheThumbnailAsyncThrows_CachingWasAttempted()
+    public async Task LoadThumbnail_WhenQueueThumbnailThrows_CachingWasAttempted()
     {
-        // Verify that CacheThumbnailAsync was actually called (i.e., the code
+        // Verify that QueueThumbnailForCache was actually called (i.e., the code
         // entered the store branch) before the exception was swallowed.
         var filePath = CreateTempFile("thumb_store_err3.jpg", byteCount: 128);
         using var info = new ImageInfo(filePath, _eventAggregator);
@@ -363,10 +362,10 @@ public class ImageInfoGapTests : IDisposable
                 It.IsAny<long>(), It.IsAny<DateTime>()))
             .ReturnsAsync((Dupples_finder_UI.Data.Entities.Photo)null);
         mockDb
-            .Setup(d => d.CacheThumbnailAsync(
+            .Setup(d => d.QueueThumbnailForCache(
                 It.IsAny<long>(), It.IsAny<DateTime>(),
                 It.IsAny<string>(), It.IsAny<byte[]>()))
-            .ThrowsAsync(new InvalidOperationException("simulated store failure"));
+            .Throws(new InvalidOperationException("simulated store failure"));
 
         var mockThumb = new Mock<IThumbnailService>();
         mockThumb
@@ -380,7 +379,7 @@ public class ImageInfoGapTests : IDisposable
         await info.LoadThumbnailAsync(mockDb.Object, mockThumb.Object);
 
         mockDb.Verify(
-            d => d.CacheThumbnailAsync(
+            d => d.QueueThumbnailForCache(
                 info.FileSize, info.LastModifiedUtc,
                 filePath, fakeBytes),
             Times.Once);

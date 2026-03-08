@@ -8,6 +8,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:prism="http://prismlibrary.com/"
     xmlns:viewModels="clr-namespace:Dupples_finder_UI.Modules.ViewModels"
+    xmlns:vwp="clr-namespace:WpfToolkit.Controls;assembly=VirtualizingWrapPanel"
     Title="Dupless Finder"
     Width="1000"
     Height="800"
@@ -86,6 +87,12 @@
                 <Button Command="{Binding AnalyzeCommand}" ToolTip="Re-analyze images (SIFT matching)">
                     <TextBlock Foreground="White" Text="Analyze" />
                 </Button>
+                <Button
+                    Command="{Binding UndoCommand}"
+                    ToolTip="Undo last delete (restore file)"
+                    Visibility="{Binding UndoVisibility}">
+                    <TextBlock Foreground="White" Text="Undo Deletion" />
+                </Button>
                 <Separator />
                 <Label
                     Content="Sensitivity:"
@@ -103,27 +110,18 @@
                     Value="{Binding ScoreThreshold}" />
                 <Label
                     MinWidth="30"
+                    d:Content="200"
                     Content="{Binding ScoreThreshold}"
                     ContentStringFormat="{}{0:F0}"
                     FontSize="11"
                     Foreground="LightGray" />
-                <Separator />
-                <Button
-                    Command="{Binding UndoCommand}"
-                    ToolTip="Undo last delete (restore file)"
-                    Visibility="{Binding UndoVisibility}">
-                    <TextBlock Foreground="White" Text="Undo Deletion" />
-                </Button>
+
                 <Separator Visibility="{Binding UndoVisibility}" />
                 <Label
                     Content="{Binding StatusText}"
                     FontSize="11"
                     Foreground="LightGray" />
-                <Separator />
-                <Label
-                    Content="{Binding AllocMem}"
-                    ContentStringFormat="{}{0} MB RAM used"
-                    ToolTip="Memory (MB)" />
+
                 <ProgressBar
                     Width="200"
                     ToolTip="{Binding CalcProgressText}"
@@ -135,86 +133,114 @@
                     Visibility="{Binding IsProgressVisible}">
                     <TextBlock Foreground="#FFE07070" Text="Cancel" />
                 </Button>
+                <Separator />
+                <Label
+                    d:Content="1024"
+                    Content="{Binding AllocMem}"
+                    ContentStringFormat="{}{0} MB RAM used"
+                    ToolTip="Memory (MB)" />
             </ToolBar>
         </ToolBarTray>
 
         <!--  Left panel: Thumbnail grid (shown before analysis)  -->
-        <ScrollViewer
+        <!--  ListBox + VirtualizingWrapPanel: only visible items are realized.  -->
+        <!--  The outer ScrollViewer is removed — ListBox has its own; an outer  -->
+        <!--  one would give infinite height and defeat virtualization.  -->
+        <ListBox
             Grid.Row="1"
             Grid.Column="0"
-            HorizontalScrollBarVisibility="Disabled"
-            VerticalScrollBarVisibility="Auto"
+            Background="Transparent"
+            BorderThickness="0"
+            ItemsSource="{Binding ImageCollection}"
+            ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+            ScrollViewer.VerticalScrollBarVisibility="Auto"
             VirtualizingPanel.CacheLength="1,1"
             VirtualizingPanel.CacheLengthUnit="Page"
             VirtualizingPanel.IsVirtualizing="True"
             VirtualizingPanel.ScrollUnit="Pixel"
             VirtualizingPanel.VirtualizationMode="Recycling"
             Visibility="{Binding ThumbnailGridVisibility}">
-            <ItemsControl ItemsSource="{Binding ImageCollection}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel IsItemsHost="True" />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate DataType="{x:Type dto:ImageInfo}">
-                        <Border
-                            Width="200"
-                            Height="230"
-                            Margin="4"
-                            Padding="2"
-                            Background="#333"
-                            BorderBrush="#444"
-                            BorderThickness="1">
-                            <Grid>
-                                <StackPanel>
-                                    <Button
-                                        Width="196"
-                                        Height="200"
-                                        HorizontalContentAlignment="Center"
-                                        VerticalContentAlignment="Center"
-                                        ToolTip="{Binding FilePath}">
-                                        <Button.InputBindings>
-                                            <MouseBinding Command="{Binding ImageClick}" Gesture="Alt+LeftClick" />
-                                            <MouseBinding Command="{Binding ImageDoubleClick}" Gesture="LeftDoubleClick" />
-                                        </Button.InputBindings>
-                                        <Grid Width="196" Height="200">
-                                            <!--  Placeholder text is visible when Image is null  -->
-                                            <TextBlock
-                                                HorizontalAlignment="Center"
-                                                VerticalAlignment="Center"
-                                                FontSize="11"
-                                                Foreground="Gray"
-                                                Text="Loading..." />
-                                            <!--  Thumbnail image overlays the placeholder when loaded  -->
-                                            <Image
-                                                MaxWidth="196"
-                                                MaxHeight="200"
-                                                HorizontalAlignment="Center"
-                                                VerticalAlignment="Center"
-                                                Source="{Binding Image, Mode=OneWay}"
-                                                Stretch="Uniform" />
-                                        </Grid>
-                                    </Button>
-                                    <TextBlock
-                                        MaxWidth="196"
-                                        Margin="0,2,0,0"
-                                        HorizontalAlignment="Center"
-                                        FontSize="10"
-                                        Foreground="White"
-                                        Text="{Binding FileName}"
-                                        TextTrimming="CharacterEllipsis" />
-                                </StackPanel>
+            <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <vwp:VirtualizingWrapPanel />
+                </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+            <!--  Strip the default ListBox selection chrome so items look  -->
+            <!--  exactly like the previous ItemsControl (no blue highlight)  -->
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="{x:Type ListBoxItem}">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="BorderThickness" Value="0" />
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="Margin" Value="0" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="{x:Type ListBoxItem}">
+                                <ContentPresenter />
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </ListBox.ItemContainerStyle>
+            <ListBox.ItemTemplate>
+                <DataTemplate DataType="{x:Type dto:ImageInfo}">
+                    <Border
+                        Width="200"
+                        Height="230"
+                        Margin="4"
+                        Padding="2"
+                        Background="#333"
+                        BorderBrush="#444"
+                        BorderThickness="1">
+                        <Grid>
+                            <StackPanel>
                                 <Button
-                                    Command="{Binding DataContext.DeleteImageCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                    CommandParameter="{Binding}"
-                                    Style="{StaticResource DeleteButtonStyle}" />
-                            </Grid>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </ScrollViewer>
+                                    Width="196"
+                                    Height="200"
+                                    HorizontalContentAlignment="Center"
+                                    VerticalContentAlignment="Center"
+                                    ToolTip="{Binding FilePath}">
+                                    <Button.InputBindings>
+                                        <MouseBinding Command="{Binding ImageClick}" Gesture="Alt+LeftClick" />
+                                        <MouseBinding Command="{Binding ImageDoubleClick}" Gesture="LeftDoubleClick" />
+                                    </Button.InputBindings>
+                                    <Grid Width="196" Height="200">
+                                        <!--  Placeholder text is visible when Image is null  -->
+                                        <TextBlock
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            FontSize="11"
+                                            Foreground="Gray"
+                                            Text="Loading..." />
+                                        <!--  Thumbnail image overlays the placeholder when loaded  -->
+                                        <Image
+                                            MaxWidth="196"
+                                            MaxHeight="200"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            Source="{Binding Image, Mode=OneWay}"
+                                            Stretch="Uniform" />
+                                    </Grid>
+                                </Button>
+                                <TextBlock
+                                    MaxWidth="196"
+                                    Margin="0,2,0,0"
+                                    HorizontalAlignment="Center"
+                                    FontSize="10"
+                                    Foreground="White"
+                                    Text="{Binding FileName}"
+                                    TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <Button
+                                Command="{Binding DataContext.DeleteImageCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                CommandParameter="{Binding}"
+                                Style="{StaticResource DeleteButtonStyle}" />
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
 
         <!--  Left panel: Pair DataGrid (shown after analysis)  -->
         <DataGrid

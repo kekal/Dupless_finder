@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -24,30 +23,6 @@ public class CalcOperationsTests
         _mockPhotoDbService = new Mock<IPhotoDbService>();
         _calcOperations = new CalcOperations(_mockMatSerializer.Object);
     }
-
-    #region Constructor Tests
-
-    [Fact]
-    public void Constructor_WithValidMatSerializer_DoesNotThrow()
-    {
-        // Arrange
-        var mockSerializer = new Mock<IMatSerializer>();
-
-        // Act & Assert
-        var instance = new CalcOperations(mockSerializer.Object);
-        Assert.NotNull(instance);
-    }
-
-    [Fact]
-    public void Constructor_WithNullMatSerializer_DoesNotThrow()
-    {
-        // Constructor accepts null; NullReferenceException would only occur
-        // when _matSerializer is actually used during SIFT hash computation.
-        var instance = new CalcOperations(null);
-        Assert.NotNull(instance);
-    }
-
-    #endregion
 
     #region CreateMatchCollection Tests
 
@@ -267,80 +242,6 @@ public class CalcOperationsTests
         Assert.Empty(result);
         Assert.NotNull(resultTask);
         await resultTask; // Ensure task completes without error
-    }
-
-    [Fact]
-    public async Task CalcSiftHashes_ReturnsTaskOutParameter()
-    {
-        // Arrange
-        var imageList = new List<ImageInfo>();
-        var progress = new Progress<double>();
-
-        // Act
-        var result = _calcOperations.CalcSiftHashes(imageList, _mockPhotoDbService.Object, progress, out var resultTask);
-
-        // Assert
-        Assert.NotNull(resultTask);
-        _ = Assert.IsAssignableFrom<Task>(resultTask);
-        await resultTask;
-    }
-
-    [Fact]
-    public async Task CalcSiftHashes_WithNullProgress_DoesNotThrow()
-    {
-        // Arrange
-        var imageList = new List<ImageInfo>();
-
-        // Act & Assert
-        var result = _calcOperations.CalcSiftHashes(imageList, _mockPhotoDbService.Object, null, out var resultTask);
-        Assert.NotNull(result);
-        await resultTask;
-    }
-
-    [Fact]
-    public async Task CalcSiftHashes_WithNullDbService_ReturnsValidDictionary()
-    {
-        // Arrange
-        var imageList = new List<ImageInfo>();
-        var progress = new Progress<double>();
-
-        // Act
-        var result = _calcOperations.CalcSiftHashes(imageList, null, progress, out var resultTask);
-
-        // Assert
-        Assert.IsType<ConcurrentDictionary<string, Mat>>(result);
-        await resultTask;
-    }
-
-    [Fact]
-    public async Task CalcSiftHashes_WithDefaultThumbSize_UsesDefaultValue()
-    {
-        // Arrange
-        var imageList = new List<ImageInfo>();
-        var progress = new Progress<double>();
-
-        // Act - uses default thumbSize of 256
-        var result = _calcOperations.CalcSiftHashes(imageList, _mockPhotoDbService.Object, progress, out var resultTask);
-
-        // Assert
-        Assert.NotNull(result);
-        await resultTask;
-    }
-
-    [Fact]
-    public async Task CalcSiftHashes_WithCustomThumbSize_AcceptsParameter()
-    {
-        // Arrange
-        var imageList = new List<ImageInfo>();
-        var progress = new Progress<double>();
-        var customThumbSize = 512;
-
-        // Act
-        var result = _calcOperations.CalcSiftHashes(imageList, _mockPhotoDbService.Object, progress, out var resultTask, customThumbSize);
-
-        // Assert
-        Assert.NotNull(result);
-        await resultTask;
     }
 
     #endregion

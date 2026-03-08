@@ -9,6 +9,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Dupples_finder_UI.Events;
+using Dupples_finder_UI.Services;
 using Dupples_finder_UI.Services.Interfaces;
 using OpenCvSharp;
 using Prism.Commands;
@@ -54,7 +55,7 @@ public class ImageInfo : DisposableObject, INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"Failed to read FileInfo for '{path}': {ex.Message}");
+            PerfLogger.Log($"Failed to read FileInfo for '{path}': {ex.Message}");
         }
 
         DefineCommands();
@@ -77,7 +78,7 @@ public class ImageInfo : DisposableObject, INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"Failed to read FileInfo for '{fileInfo.FullName}': {ex.Message}");
+            PerfLogger.Log($"Failed to read FileInfo for '{fileInfo.FullName}': {ex.Message}");
         }
 
         DefineCommands();
@@ -102,7 +103,11 @@ public class ImageInfo : DisposableObject, INotifyPropertyChanged
         get => _image;
         private set
         {
-            if (ReferenceEquals(_image, value)) return;
+            if (ReferenceEquals(_image, value))
+            {
+                return;
+            }
+
             _image = value;
             OnPropertyChanged();
         }
@@ -139,11 +144,29 @@ public class ImageInfo : DisposableObject, INotifyPropertyChanged
     /// </summary>
     public async Task LoadThumbnailAsync(IPhotoDbService dbService, IThumbnailService thumbnailService)
     {
+        using var op = PerfLogger.TimedVerbose("THUMB");
+        var source = "NONE";
+
         try
         {
             BitmapSource thumbnail = null;
+            var fromCache = false;
 
-            if (dbService is { IsAvailable: true })
+            // ── Step 1: In-memory pre-loaded cache ──
+            if (dbService is { IsAvailable: true } &&
+                dbService.TryGetCachedThumbnail(FileSize, LastModifiedUtc, out var cachedBytes))
+            {
+                thumbnail = thumbnailService.BytesToBitmapSource(cachedBytes);
+                fromCache = thumbnail != null;
+                if (fromCache)
+                {
+                    source = "MEM_CACHE";
+                }
+            }
+            op.Lap("memCache");
+
+            // ── Step 2: DB query fallback (skipped when memory cache is preloaded) ──
+            if (thumbnail == null && dbService is { IsAvailable: true } && !dbService.IsCachePreloaded)
             {
                 try
                 {
@@ -151,38 +174,55 @@ public class ImageInfo : DisposableObject, INotifyPropertyChanged
                     if (cached?.Thumbnail is { Length: > 0 })
                     {
                         thumbnail = thumbnailService.BytesToBitmapSource(cached.Thumbnail);
+                        fromCache = thumbnail != null;
+                        if (fromCache)
+                        {
+                            source = "DB_CACHE";
+                        }
                     }
                 }
                 catch (Exception ex)
                 {
-                    Trace.WriteLine($"DB thumbnail lookup failed for '{FileName}': {ex.Message}");
+                    PerfLogger.Log($"DB thumbnail lookup failed for '{FileName}': {ex.Message}");
                 }
             }
+            op.Lap("db");
 
+            // ── Step 3: EXIF embedded thumbnail (raw byte parsing, fully parallel) ──
+            if (thumbnail == null)
+            {
+                var exifBytes = thumbnailService.GetEmbeddedThumbnailBytes(FilePath);
+                if (exifBytes != null)
+                {
+                    thumbnail = thumbnailService.BytesToBitmapSource(exifBytes);
+                    if (thumbnail != null)
+                    {
+                        source = "EXIF";
+                        // Queue raw EXIF bytes for DB cache (skip re-encoding)
+                        if (!fromCache && dbService is { IsAvailable: true })
+                        {
+                            dbService.QueueThumbnailForCache(FileSize, LastModifiedUtc, FilePath, exifBytes);
+                            fromCache = true;
+                        }
+                    }
+                }
+            }
+            op.Lap("exif");
+
+            // ── Step 4: Shell fallback (COM STA, serialized — slower) ──
             if (thumbnail == null)
             {
                 thumbnail = thumbnailService.GetThumbnail(FilePath);
-
-                if (thumbnail != null && dbService is { IsAvailable: true })
+                if (thumbnail != null)
                 {
-                    try
-                    {
-                        var thumbBytes = thumbnailService.EncodeBitmapSourceToBytes(thumbnail);
-                        if (thumbBytes is { Length: > 0 })
-                        {
-                            await dbService.CacheThumbnailAsync(FileSize, LastModifiedUtc, FilePath, thumbBytes);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Trace.WriteLine($"DB thumbnail store failed for '{FileName}': {ex.Message}");
-                    }
+                    source = "SHELL";
                 }
             }
+            op.Lap("shell");
 
+            // ── Step 5: OpenCvSharp full decode ──
             if (thumbnail == null)
             {
-                Trace.WriteLine($"Shell thumbnail failed for '{FileName}', falling back to OpenCvSharp");
                 Sem.WaitOne();
                 try
                 {
@@ -190,6 +230,7 @@ public class ImageInfo : DisposableObject, INotifyPropertyChanged
                     if (_storedMat != null && !_storedMat.Empty())
                     {
                         thumbnail = OpenCvSharp.WpfExtensions.BitmapSourceConverter.ToBitmapSource(_storedMat);
+                        source = "OPENCV";
                     }
                 }
                 finally
@@ -197,6 +238,25 @@ public class ImageInfo : DisposableObject, INotifyPropertyChanged
                     Sem.Release();
                 }
             }
+            op.Lap("opencv");
+
+            // ── Step 6: Encode & queue for DB ──
+            if (thumbnail != null && !fromCache && dbService is { IsAvailable: true })
+            {
+                try
+                {
+                    var thumbBytes = thumbnailService.EncodeBitmapSourceToBytes(thumbnail);
+                    if (thumbBytes is { Length: > 0 })
+                    {
+                        dbService.QueueThumbnailForCache(FileSize, LastModifiedUtc, FilePath, thumbBytes);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    PerfLogger.Log($"DB thumbnail store failed for '{FileName}': {ex.Message}");
+                }
+            }
+            op.Lap("encode");
 
             if (thumbnail is { IsFrozen: false })
             {
@@ -204,12 +264,28 @@ public class ImageInfo : DisposableObject, INotifyPropertyChanged
             }
 
             Image = thumbnail;
+
+            var idx = Interlocked.Increment(ref _globalThumbIndex);
+            op.Detail($"#{idx}");
+            op.Detail($"source={source}");
+            op.Detail($"file={FilePath}");
+            op.Detail($"fileSize={FileSize}");
+            op.Detail($"thumbPx={(thumbnail != null ? $"{thumbnail.PixelWidth}x{thumbnail.PixelHeight}" : "null")}");
+
+            // Log every image if slow (>200ms), otherwise sample every 100th
+            if (!(op.ElapsedMs > 200 || idx % 100 == 0))
+            {
+                op.Suppress();
+            }
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"LoadThumbnailAsync failed for '{FileName}': {ex.Message}");
+            op.Suppress();
+            PerfLogger.Log($"[PERF] THUMB FAILED in {op.ElapsedMs}ms | file={FilePath} | error={ex.Message} | thread={Environment.CurrentManagedThreadId}");
         }
     }
+
+    private static int _globalThumbIndex;
 
     public void StoreMat(double decodeSize)
     {
@@ -241,7 +317,7 @@ public class ImageInfo : DisposableObject, INotifyPropertyChanged
             }
             catch (Exception ex)
             {
-                Trace.WriteLine($"StoreMat failed for '{FileName}': {ex.Message}");
+                PerfLogger.Log($"StoreMat failed for '{FileName}': {ex.Message}");
                 _storedMat = Mat.Zeros(new Size(decodeSize, decodeSize), MatType.CV_8UC3);
             }
             finally

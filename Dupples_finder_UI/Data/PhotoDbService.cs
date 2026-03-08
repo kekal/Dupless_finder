@@ -1,11 +1,12 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Dupples_finder_UI.Data.Entities;
+using Dupples_finder_UI.Services;
 using Dupples_finder_UI.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
@@ -20,11 +21,18 @@ namespace Dupples_finder_UI.Data;
 public class PhotoDbService : IPhotoDbService
 {
     private bool _disposed;
-    private bool _isAvailable;
     private DuplessDbContext _context;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    public bool IsAvailable => _isAvailable;
+    /// <summary>In-memory thumbnail cache: fingerprint key -> JPEG bytes.</summary>
+    private ConcurrentDictionary<string, byte[]> _thumbnailCache;
+
+    /// <summary>Queue for batch-writing new thumbnails to DB.</summary>
+    private readonly ConcurrentQueue<(long fileSize, DateTime lastModifiedUtc, string filePath, byte[] thumbnail)> _thumbnailQueue = new();
+
+    public bool IsAvailable { get; private set; }
+
+    public bool IsCachePreloaded => _thumbnailCache != null;
 
     public void Dispose()
     {
@@ -51,7 +59,7 @@ public class PhotoDbService : IPhotoDbService
         long fileSize,
         DateTime lastModifiedUtc)
     {
-        if (!_isAvailable)
+        if (!IsAvailable)
         {
             return null;
         }
@@ -92,7 +100,7 @@ public class PhotoDbService : IPhotoDbService
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"DB write error: {ex.Message}");
+            PerfLogger.Log($"DB write error: {ex.Message}");
             return null;
         }
         finally { _gate.Release(); }
@@ -111,7 +119,7 @@ public class PhotoDbService : IPhotoDbService
         string filePath,
         byte[] thumbnail)
     {
-        if (!_isAvailable)
+        if (!IsAvailable)
         {
             return null;
         }
@@ -146,7 +154,7 @@ public class PhotoDbService : IPhotoDbService
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"DB thumbnail write error: {ex.Message}");
+            PerfLogger.Log($"DB thumbnail write error: {ex.Message}");
             return null;
         }
         finally { _gate.Release(); }
@@ -154,7 +162,7 @@ public class PhotoDbService : IPhotoDbService
 
     public async Task<Photo> GetCachedPhotoAsync(string filePath)
     {
-        if (!_isAvailable)
+        if (!IsAvailable)
         {
             return null;
         }
@@ -167,7 +175,7 @@ public class PhotoDbService : IPhotoDbService
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"DB read error: {ex.Message}");
+            PerfLogger.Log($"DB read error: {ex.Message}");
             return null;
         }
         finally { _gate.Release(); }
@@ -175,7 +183,7 @@ public class PhotoDbService : IPhotoDbService
 
     public async Task<Photo> GetCachedPhotoByFingerprintAsync(long fileSize, DateTime lastModifiedUtc)
     {
-        if (!_isAvailable)
+        if (!IsAvailable)
         {
             return null;
         }
@@ -189,7 +197,7 @@ public class PhotoDbService : IPhotoDbService
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"DB fingerprint read error: {ex.Message}");
+            PerfLogger.Log($"DB fingerprint read error: {ex.Message}");
             return null;
         }
         finally { _gate.Release(); }
@@ -197,7 +205,7 @@ public class PhotoDbService : IPhotoDbService
 
     public async Task<IList<SimilarityResult>> GetCachedResultsAsync()
     {
-        if (!_isAvailable)
+        if (!IsAvailable)
         {
             return new List<SimilarityResult>();
         }
@@ -213,7 +221,7 @@ public class PhotoDbService : IPhotoDbService
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"DB results read error: {ex.Message}");
+            PerfLogger.Log($"DB results read error: {ex.Message}");
             return new List<SimilarityResult>();
         }
         finally { _gate.Release(); }
@@ -234,7 +242,7 @@ public class PhotoDbService : IPhotoDbService
             }
             catch (Microsoft.Data.Sqlite.SqliteException)
             {
-                Trace.WriteLine("DB schema outdated — recreating cache database.");
+                PerfLogger.Log("DB schema outdated — recreating cache database.");
                 await _context.DisposeAsync();
                 
                 Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
@@ -243,12 +251,12 @@ public class PhotoDbService : IPhotoDbService
                 await _context.Database.EnsureCreatedAsync();
             }
 
-            _isAvailable = true;
+            IsAvailable = true;
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"DB init failed: {ex.Message}. Running without cache.");
-            _isAvailable = false;
+            PerfLogger.Log($"DB init failed: {ex.Message}. Running without cache.");
+            IsAvailable = false;
             if (_context != null)
             {
                 await _context.DisposeAsync();
@@ -258,13 +266,132 @@ public class PhotoDbService : IPhotoDbService
         }
     }
 
+    public async Task PreloadThumbnailCacheAsync()
+    {
+        if (!IsAvailable)
+        {
+            _thumbnailCache = new ConcurrentDictionary<string, byte[]>();
+            return;
+        }
+
+        await _gate.WaitAsync();
+        try
+        {
+            var photos = await _context.Photos
+                .Where(p => p.Thumbnail != null)
+                .Select(p => new { p.FileSize, p.LastModifiedUtc, p.Thumbnail })
+                .ToListAsync();
+
+            _thumbnailCache = new ConcurrentDictionary<string, byte[]>(
+                photos.ToDictionary(
+                    p => $"{p.FileSize}_{p.LastModifiedUtc.Ticks}",
+                    p => p.Thumbnail));
+
+            PerfLogger.Log($"Preloaded {_thumbnailCache.Count} cached thumbnails.");
+        }
+        catch (Exception ex)
+        {
+            PerfLogger.Log($"Thumbnail cache preload failed: {ex.Message}");
+            _thumbnailCache = new ConcurrentDictionary<string, byte[]>();
+        }
+        finally { _gate.Release(); }
+    }
+
+    public bool TryGetCachedThumbnail(long fileSize, DateTime lastModifiedUtc, out byte[] thumbnail)
+    {
+        thumbnail = null;
+        if (_thumbnailCache == null)
+        {
+            return false;
+        }
+
+        var key = $"{fileSize}_{lastModifiedUtc.Ticks}";
+        return _thumbnailCache.TryGetValue(key, out thumbnail) && thumbnail is { Length: > 0 };
+    }
+
+    public void QueueThumbnailForCache(long fileSize, DateTime lastModifiedUtc, string filePath, byte[] thumbnail)
+    {
+        if (!IsAvailable || thumbnail == null || thumbnail.Length == 0)
+        {
+            return;
+        }
+
+        _thumbnailQueue.Enqueue((fileSize, lastModifiedUtc, filePath, thumbnail));
+
+        // Also add to in-memory cache so subsequent lookups hit immediately
+        var key = $"{fileSize}_{lastModifiedUtc.Ticks}";
+        _thumbnailCache?.TryAdd(key, thumbnail);
+    }
+
+    public async Task FlushThumbnailQueueAsync()
+    {
+        if (!IsAvailable || _thumbnailQueue.IsEmpty)
+        {
+            return;
+        }
+
+        await _gate.WaitAsync();
+        try
+        {
+            var batch = new List<(long fileSize, DateTime lastModifiedUtc, string filePath, byte[] thumbnail)>();
+            while (_thumbnailQueue.TryDequeue(out var item))
+            {
+                batch.Add(item);
+            }
+
+            // Process in chunks to avoid huge single transactions
+            const int chunkSize = 500;
+            for (var i = 0; i < batch.Count; i += chunkSize)
+            {
+                var chunk = batch.Skip(i).Take(chunkSize);
+                foreach (var item in chunk)
+                {
+                    var existing = await _context.Photos
+                        .FirstOrDefaultAsync(p => p.FileSize == item.fileSize
+                                                  && p.LastModifiedUtc == item.lastModifiedUtc);
+                    if (existing != null)
+                    {
+                        existing.Thumbnail = item.thumbnail;
+                        existing.FilePath = item.filePath;
+                    }
+                    else
+                    {
+                        _context.Photos.Add(new Photo
+                        {
+                            FilePath = item.filePath,
+                            FileSize = item.fileSize,
+                            LastModifiedUtc = item.lastModifiedUtc,
+                            Thumbnail = item.thumbnail,
+                            HashDate = DateTime.UtcNow
+                        });
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+            }
+
+            PerfLogger.Log($"Flushed {batch.Count} thumbnails to DB.");
+        }
+        catch (Exception ex)
+        {
+            PerfLogger.Log($"Thumbnail flush failed: {ex.Message}");
+        }
+        finally { _gate.Release(); }
+    }
+
+    public void ClearThumbnailCache()
+    {
+        _thumbnailCache?.Clear();
+        _thumbnailCache = null;
+    }
+
     /// <summary>
     /// Stores or updates a similarity comparison result between two photos.
     /// Photo IDs are normalized so Photo1Id is always the smaller ID.
     /// </summary>
     public async Task StoreSimilarityAsync(int photo1Id, int photo2Id, double score)
     {
-        if (!_isAvailable)
+        if (!IsAvailable)
         {
             return;
         }
@@ -299,7 +426,7 @@ public class PhotoDbService : IPhotoDbService
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"DB similarity write error: {ex.Message}");
+            PerfLogger.Log($"DB similarity write error: {ex.Message}");
         }
         finally { _gate.Release(); }
     }

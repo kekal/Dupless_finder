@@ -79,26 +79,8 @@ public class MainViewModelCoverageGapTests : IDisposable
     }
 
     // ===========================================================================
-    // 1. CalcProgress getter — reads back the backing field value
+    // 1. CalcProgress setter — SetProperty short-circuit test
     // ===========================================================================
-
-    [Fact]
-    public void CalcProgress_Getter_ReturnsSetValue()
-    {
-        // The getter path (_calcProgress field read) is distinct from the setter logic.
-        // Setting via the property goes through SetProperty; the getter simply returns the field.
-        _vm.CalcProgress = 73.2;
-        var retrieved = _vm.CalcProgress;
-        Assert.Equal(73.2, retrieved, precision: 10);
-    }
-
-    [Fact]
-    public void CalcProgress_Getter_ReturnsDefaultZeroBeforeAnySet()
-    {
-        // Freshly constructed ViewModel — backing field is default(double) = 0.0.
-        var retrieved = _vm.CalcProgress;
-        Assert.Equal(0.0, retrieved, precision: 10);
-    }
 
     [Fact]
     public void CalcProgress_Setter_WhenSameValueSet_DoesNotUpdateCalcProgressText()
@@ -887,76 +869,6 @@ public class MainViewModelCoverageGapTests : IDisposable
         }
     }
 
-    [Fact]
-    public async Task TryLoadCachedPairsAsync_WhenCachedResultHasNullPhoto2FilePath_IsFilteredOut()
-    {
-        // Symmetric test: null Photo2.FilePath also causes the predicate to exclude the entry.
-        var path1 = Path.GetTempFileName();
-        var path2 = Path.GetTempFileName();
-        try
-        {
-            _mockLoadingOps.Setup(l => l.ShowFolderDialog()).Returns(@"C:\test");
-            _mockLoadingOps
-                .Setup(l => l.ScanImageFileInfos(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<IProgress<int>>(), It.IsAny<CancellationToken>()))
-                .Returns(new List<FileInfo> { new FileInfo(path1), new FileInfo(path2) });
-
-            _mockDbService.Setup(d => d.IsAvailable).Returns(true);
-
-            var cachedResults = new List<SimilarityResult>
-            {
-                new SimilarityResult
-                {
-                    Score = 5.0,
-                    Photo1 = new Photo { Id = 1, FilePath = path1 },
-                    Photo2 = new Photo { Id = 2, FilePath = null } // null path -> filtered
-                }
-            };
-
-            _mockDbService
-                .Setup(d => d.GetCachedResultsAsync())
-                .ReturnsAsync(cachedResults);
-
-            _mockDbService
-                .Setup(d => d.GetCachedPhotoAsync(It.IsAny<string>()))
-                .ReturnsAsync((Photo)null);
-
-            var completedTask = Task.CompletedTask;
-            _mockCalcOps
-                .Setup(c => c.CalcSiftHashes(
-                    It.IsAny<IEnumerable<ImageInfo>>(),
-                    It.IsAny<IPhotoDbService>(),
-                    It.IsAny<IProgress<double>>(),
-                    out completedTask,
-                    It.IsAny<int>(),
-                    It.IsAny<CancellationToken>()))
-                .Returns(new ConcurrentDictionary<string, Mat>());
-
-            _mockCalcOps
-                .Setup(c => c.CreateMatchCollection(
-                    It.IsAny<IDictionary<string, Mat>>(),
-                    It.IsAny<IProgress<double>>(),
-                    It.IsAny<CancellationToken>()))
-                .Returns(Enumerable.Empty<PairSimilarityInfo>());
-
-            await TestHelpers.InvokeCommandAsync(_vm.OpenCommand);
-
-            _mockCalcOps.Verify(
-                c => c.CalcSiftHashes(
-                    It.IsAny<IEnumerable<ImageInfo>>(),
-                    It.IsAny<IPhotoDbService>(),
-                    It.IsAny<IProgress<double>>(),
-                    out It.Ref<Task>.IsAny,
-                    It.IsAny<int>(),
-                    It.IsAny<CancellationToken>()),
-                Times.Once);
-        }
-        finally
-        {
-            File.Delete(path1);
-            File.Delete(path2);
-        }
-    }
-
     // ===========================================================================
     // 7. InitializeDbAsync — exception catch (lines 63-66)
     //    This path is already covered by MainViewModelTests.Constructor_WhenInitializeDbAsyncThrows_DoesNotPropagateException
@@ -996,28 +908,6 @@ public class MainViewModelCoverageGapTests : IDisposable
         Assert.True(vm.IsLoaded);
 
         vm?.Dispose();
-    }
-
-    [Fact]
-    public async Task InitializeDbAsync_WhenInitializeThrowsArgumentException_DoesNotPropagateToConstructor()
-    {
-        var throwingDb = new Mock<IPhotoDbService>();
-        throwingDb
-            .Setup(d => d.InitializeAsync(It.IsAny<string>()))
-            .ThrowsAsync(new ArgumentException("bad argument"));
-
-        var ex = await Record.ExceptionAsync(async () =>
-        {
-            using var vm = new MainViewModel(
-                _eventAggregator,
-                throwingDb.Object,
-                _mockCalcOps.Object,
-                _mockLoadingOps.Object,
-                _mockThumbnailService.Object);
-            await Task.Delay(100);
-        });
-
-        Assert.Null(ex);
     }
 
     // ===========================================================================

@@ -1,12 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reactive.Concurrency;
 using System.Reactive.Linq;
-using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -15,6 +14,7 @@ using System.Windows.Media.Imaging;
 using Dupples_finder_UI.DTO;
 using Dupples_finder_UI.Events;
 using Dupples_finder_UI.Modules.Helpers;
+using Dupples_finder_UI.Services;
 using Dupples_finder_UI.Services.Interfaces;
 using OpenCvSharp;
 using Prism.Commands;
@@ -50,7 +50,7 @@ public class MainViewModel : ViewModelBase
 
     private long _allocMem;
 
-    private ObservableCollection<ImageInfo> _imageCollection;
+    private RangeObservableCollection<ImageInfo> _imageCollection;
 
     private readonly Stack<(string OriginalPath, string DeletedPath)> _undoStack = new();
 
@@ -175,7 +175,7 @@ public class MainViewModel : ViewModelBase
         set => SetProperty(ref _includeSubfolders, value);
     }
 
-    public ObservableCollection<ImageInfo> ImageCollection
+    public RangeObservableCollection<ImageInfo> ImageCollection
     {
         get => _imageCollection;
         set => SetProperty(ref _imageCollection, value);
@@ -333,6 +333,13 @@ public class MainViewModel : ViewModelBase
             _cts = null;
             _t?.Dispose();
             _t = null;
+
+            // Flush any queued thumbnails to DB before shutting down,
+            // so progress is not lost when the user closes mid-pipeline.
+            // Run on threadpool to avoid SynchronizationContext deadlock on UI thread.
+            try { Task.Run(() => _dbService?.FlushThumbnailQueueAsync()).GetAwaiter().GetResult(); }
+            catch { /* best-effort */ }
+
             _dbService?.Dispose();
         }
         base.Dispose(disposing);
@@ -502,9 +509,18 @@ public class MainViewModel : ViewModelBase
         IsProgressVisible = Visibility.Visible;
         CalcProgress = 0;
 
+        using var openOp = PerfLogger.TimedVerbose("OPEN");
+        openOp.Detail($"folder={rootFolder}");
+
         try
         {
-            var fileInfos = await ScanFolderAsync(rootFolder, ct);
+            List<FileInfo> fileInfos;
+            using (var scanOp = PerfLogger.TimedVerbose("SCAN"))
+            {
+                fileInfos = await ScanFolderAsync(rootFolder, ct);
+                scanOp.Detail($"files={fileInfos.Count}");
+            }
+
             if (fileInfos.Count == 0)
             {
                 StatusText = "No images found in selected folder.";
@@ -557,14 +573,34 @@ public class MainViewModel : ViewModelBase
     /// <summary>
     /// Streaming pipeline: creates ImageInfo objects and loads thumbnails incrementally.
     /// Items appear in ImageCollection as soon as they're created; thumbnails load concurrently.
+    /// Pre-loads the DB thumbnail cache for fast O(1) lookups, and batches UI additions
+    /// to reduce ObservableCollection notification overhead.
     /// </summary>
     private async Task BuildAndLoadStreamingAsync(List<FileInfo> fileInfos, CancellationToken ct)
     {
+        using var pipelineOp = PerfLogger.TimedVerbose("PIPELINE");
+
         var totalFiles = fileInfos.Count;
         var ea = EventAggregator;
         var tcs = new TaskCompletionSource<bool>();
-        int createdCount = 0;
-        int loadedCount = 0;
+        var createdCount = 0;
+        var loadedCount = 0;
+        var mergeParallelism = Math.Max(Environment.ProcessorCount - 1, 1);
+
+        pipelineOp.Detail($"totalFiles={totalFiles}");
+        pipelineOp.Detail($"mergeParallelism={mergeParallelism}");
+
+        // Pre-load all cached thumbnails into memory to avoid per-image DB queries
+        StatusText = "Preloading cache...";
+        using (PerfLogger.TimedVerbose("PRELOAD_CACHE"))
+            await _dbService.PreloadThumbnailCacheAsync();
+        ct.ThrowIfCancellationRequested();
+
+        // Tracking for thumbnail throughput logging
+        var thumbSw = Stopwatch.StartNew();
+        long thumbSlowCount = 0;       // thumbnails taking > 500ms
+        long thumbVerySlowCount = 0;    // thumbnails taking > 2000ms
+        var lastProgressLog = Stopwatch.StartNew();
 
         var cancel = Observable.Create<bool>(obs =>
             ct.Register(() => { obs.OnNext(true); obs.OnCompleted(); }));
@@ -573,39 +609,107 @@ public class MainViewModel : ViewModelBase
             .ToObservable(_backgroundScheduler)
             .TakeUntil(cancel)
             .Select(fi => new ImageInfo(fi, ea))
+            // Buffer image creation in batches to reduce UI thread context switches
+            .Buffer(100)
             .ObserveOn(_uiScheduler)
-            .Do(img =>
+            .Do(batch =>
             {
-                _dataCollectionFlat.Add(img);
-                ImageCollection.Add(img);
-                UpdateStatus(ref createdCount, 0.0, "image");
+                using var batchOp = PerfLogger.TimedVerbose("BATCH_ADD");
+
+                foreach (var img in batch)
+                {
+                    _dataCollectionFlat.Add(img);
+                }
+
+                batchOp.Lap("listAdd");
+
+                ImageCollection.AddRange(batch);
+                batchOp.Lap("addRange");
+
+                createdCount += batch.Count;
+                CalcProgress = (double)createdCount / totalFiles * 50.0;
+                StatusText = $"Loading images... {createdCount}/{totalFiles}";
+
+                batchOp.Detail($"batchSize={batch.Count}");
+                batchOp.Detail($"totalAdded={createdCount}/{totalFiles}");
+                batchOp.Detail($"collectionSize={ImageCollection.Count}");
             })
+            // Flatten batches back to individual items for thumbnail loading
+            .SelectMany(batch => batch.ToObservable())
             .ObserveOn(_backgroundScheduler)
             .Select(img => Observable.FromAsync(async () =>
             {
+                var imgSw = Stopwatch.StartNew();
                 await img.LoadThumbnailAsync(_dbService, _thumbnailService);
+                imgSw.Stop();
+
+                var ms = imgSw.ElapsedMilliseconds;
+                switch (ms)
+                {
+                    case > 2000:
+                        Interlocked.Increment(ref thumbVerySlowCount);
+                        break;
+                    case > 500:
+                        Interlocked.Increment(ref thumbSlowCount);
+                        break;
+                }
+
                 return img;
             }))
-            .Merge(Math.Max(Environment.ProcessorCount - 1, 1))
+            .Merge(mergeParallelism)
             .ObserveOn(_uiScheduler)
-            .Do(_ => UpdateStatus(ref loadedCount, 50.0, "thumbnail"))
+            .Do(img =>
+            {
+                var count = Interlocked.Increment(ref loadedCount);
+                CalcProgress = 50.0 + (double)count / totalFiles * 50.0;
+                StatusText = $"Loading thumbnails... {count}/{totalFiles}";
+
+                // Periodically flush cached thumbnails to DB so progress
+                // survives if the user closes the app mid-pipeline.
+                if (count % 200 == 0)
+                {
+                    var db = _dbService;
+                    _ = Task.Run(async () =>
+                    {
+                        try { await db.FlushThumbnailQueueAsync(); }
+                        catch { /* best-effort */ }
+                    });
+                }
+
+                // Log throughput every 500 thumbnails or every 10 seconds
+                if (count % 500 == 0 || lastProgressLog.ElapsedMilliseconds > 10000)
+                {
+                    var elapsed = thumbSw.Elapsed.TotalSeconds;
+                    var rate = elapsed > 0 ? count / elapsed : 0;
+                    PerfLogger.Verbose($"[PERF] THUMB_PROGRESS | loaded={count}/{totalFiles} " +
+                                    $"| elapsed={elapsed:F1}s | rate={rate:F1}/s " +
+                                    $"| slow500ms={Interlocked.Read(ref thumbSlowCount)} " +
+                                    $"| verySlow2s={Interlocked.Read(ref thumbVerySlowCount)} " +
+                                    $"| lastFile={img.FileName} | lastSize={img.FileSize}");
+                    lastProgressLog.Restart();
+                }
+            })
             .Subscribe(
                 _ => { },
                 ex => tcs.TrySetException(ex),
                 () => tcs.TrySetResult(!ct.IsCancellationRequested));
 
         var completed = await tcs.Task;
+        pipelineOp.Lap("thumbnails");
+
+        pipelineOp.Detail($"totalLoaded={loadedCount}");
+        pipelineOp.Detail($"slow500ms={Interlocked.Read(ref thumbSlowCount)}");
+        pipelineOp.Detail($"verySlow2s={Interlocked.Read(ref thumbVerySlowCount)}");
+
+        // Batch-write all new thumbnails to DB and free the in-memory cache
+        StatusText = "Saving cache...";
+        using (PerfLogger.TimedVerbose("FLUSH_CACHE"))
+            await _dbService.FlushThumbnailQueueAsync();
+        _dbService.ClearThumbnailCache();
+
         if (!completed)
         {
             throw new OperationCanceledException(ct);
-        }
-
-        return;
-
-        void UpdateStatus(ref int location, double baseLineProgress, string itemName)
-        {
-            CalcProgress = baseLineProgress + (double)Interlocked.Increment(ref location) / totalFiles * 50.0;
-            StatusText = $"Loading {itemName}s... {location}/{totalFiles}";
         }
     }
 
@@ -672,7 +776,7 @@ public class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"DB initialization failed: {ex.Message}");
+            PerfLogger.Log($"DB initialization failed: {ex.Message}");
         }
     }
 
@@ -772,8 +876,8 @@ public class MainViewModel : ViewModelBase
     {
         _t = new Timer(_ => Application.Current?.Dispatcher?.BeginInvoke(new Action(() =>
         {
-            //using var proc = Process.GetCurrentProcess();
-            //AllocMem = proc.PrivateMemorySize64 / 1000000;
+            using var proc = Process.GetCurrentProcess();
+            AllocMem = proc.PrivateMemorySize64 / 1000000;
         })), null, 0, 300);
     }
 
@@ -816,7 +920,7 @@ public class MainViewModel : ViewModelBase
             }
             catch (Exception ex)
             {
-                Trace.WriteLine($"DB photo lookup error for '{path}': {ex.Message}");
+                PerfLogger.Log($"DB photo lookup error for '{path}': {ex.Message}");
             }
         }
 
@@ -833,7 +937,7 @@ public class MainViewModel : ViewModelBase
             }
             catch (Exception ex)
             {
-                Trace.WriteLine($"DB similarity store error: {ex.Message}");
+                PerfLogger.Log($"DB similarity store error: {ex.Message}");
             }
         }
     }
@@ -895,7 +999,7 @@ public class MainViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            Trace.WriteLine($"Failed to load cached results: {ex.Message}");
+            PerfLogger.Log($"Failed to load cached results: {ex.Message}");
             return false;
         }
     }

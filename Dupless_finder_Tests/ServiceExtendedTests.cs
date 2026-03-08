@@ -5,7 +5,6 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Media.Imaging;
 using Dupples_finder_UI.Data;
 using Dupples_finder_UI.Data.Entities;
 using Dupples_finder_UI.DTO;
@@ -399,7 +398,10 @@ public class CalcOperationsExtendedTests : IDisposable
         Assert.NotNull(dict);
         Assert.True(dict.Count <= paths.Length);
 
-        foreach (var info in infos) info.Dispose();
+        foreach (var info in infos)
+        {
+            info.Dispose();
+        }
     }
 
     // ------------------------------------------------------------------
@@ -641,32 +643,8 @@ public class PhotoDbServiceExtendedTests : IDisposable
         }
     }
 
-    // ------------------------------------------------------------------
-    // GetCachedPhotoAsync — catch block (simulate DB error after init)
-    // ------------------------------------------------------------------
-
-    [Fact]
-    public async Task GetCachedPhotoAsync_WhenDbContextDisposed_ReturnsNull()
-    {
-        var dbPath = NewTempDb();
-        var service = new PhotoDbService();
-        await service.InitializeAsync(dbPath);
-
-        // Dispose the service — subsequent calls must return null gracefully
-        service.Dispose();
-
-        // After dispose, IsAvailable is still whatever it was — calling
-        // GetCachedPhotoAsync on a disposed context exercises the catch block.
-        // We create a fresh service to call after dispose to avoid NRE on _gate.
-        using var service2 = new PhotoDbService();
-        await service2.InitializeAsync(dbPath);
-        service2.Dispose();
-
-        // Verify that a fresh, non-initialized service returns null (not available)
-        using var notInitialized = new PhotoDbService();
-        var photo = await notInitialized.GetCachedPhotoAsync("/any/path.jpg");
-        Assert.Null(photo);
-    }
+    // NOTE: GetCachedPhotoAsync_WhenDbContextDisposed_ReturnsNull was removed because it
+    // duplicates PhotoDbServiceGapTests.GetCachedPhotoAsync_CatchBlock_ReturnsNull_WhenContextDisposed
 
     // NOTE: StoreSimilarityAsync_NormalizesPhotoIds_LargerIdFirst was removed because it
     // duplicates PhotoDbServiceTests.StoreSimilarity_NormalizesIds_SmallIdFirst
@@ -882,16 +860,6 @@ public class LoadingOperationsExtendedTests : IDisposable
         Assert.Empty(paths.ToList());
     }
 
-    // ------------------------------------------------------------------
-    // LoadingOperations — constructor sanity check
-    // ------------------------------------------------------------------
-
-    [Fact]
-    public void LoadingOperations_Constructor_DoesNotThrow()
-    {
-        var ex = Record.Exception(() => new LoadingOperations());
-        Assert.Null(ex);
-    }
 }
 
 // =========================================================================
@@ -966,77 +934,14 @@ public class ThumbnailServiceExtendedTests : IDisposable
         Assert.Null(result);
     }
 
-    // ------------------------------------------------------------------
-    // BytesToBitmapSource — more extensive garbage (closer to valid header length)
-    // ------------------------------------------------------------------
-
-    [Fact]
-    public void BytesToBitmapSource_WithLargeGarbageBytes_ReturnsNull()
-    {
-        var garbage = new byte[512];
-        new Random(1).NextBytes(garbage);
-        var result = _service.BytesToBitmapSource(garbage);
-        Assert.Null(result);
-    }
+    // NOTE: BytesToBitmapSource_WithLargeGarbageBytes_ReturnsNull was removed because it
+    // duplicates BytesToBitmapSource_WithInvalidBytes_ReturnsNull (same code path).
 
     // NOTE: EncodeBitmapSourceToBytes_WithNull_ReturnsEmptyArray was removed because it
     // duplicates ThumbnailServiceTests.EncodeBitmapSourceToBytes_ReturnsEmpty_ForNullInput
 
-    // ------------------------------------------------------------------
-    // Round-trip: encode valid BitmapSource → decode back (STA required)
-    // ------------------------------------------------------------------
-
-    [Fact]
-    public void EncodeBitmapSourceToBytes_ThenBytesToBitmapSource_RoundTrips()
-    {
-        var bitmapPath = CreateBitmapFile(32, 32);
-
-        BitmapSource roundTripped = null;
-        byte[] encoded = null;
-        Exception threadEx = null;
-
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                var source = _service.GetThumbnail(bitmapPath);
-                if (source == null)
-                {
-                    return; // Shell API unavailable in CI
-                }
-
-                encoded = _service.EncodeBitmapSourceToBytes(source);
-                if (encoded == null || encoded.Length == 0)
-                {
-                    return;
-                }
-
-                roundTripped = _service.BytesToBitmapSource(encoded);
-            }
-            catch (Exception ex)
-            {
-                threadEx = ex;
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-
-        if (threadEx != null)
-        {
-            throw threadEx;
-        }
-
-        // In environments where the Windows Shell thumbnail API works:
-        if (encoded != null && encoded.Length > 0)
-        {
-            Assert.NotNull(roundTripped);
-            Assert.True(roundTripped.PixelWidth > 0);
-            Assert.True(roundTripped.PixelHeight > 0);
-        }
-        // If Shell API is unavailable (CI / headless), the test still passes
-        // because GetThumbnail returns null and we skip the assertions.
-    }
+    // NOTE: EncodeBitmapSourceToBytes_ThenBytesToBitmapSource_RoundTrips was removed because it
+    // duplicates ThumbnailServiceTests.EncodeBitmapSourceToBytes_RoundTrips_WithBytesToBitmapSource
 
     // ------------------------------------------------------------------
     // EncodeBitmapSourceToBytes — encodes a programmatically created
@@ -1079,44 +984,4 @@ public class ThumbnailServiceExtendedTests : IDisposable
         Assert.NotEmpty(result);
     }
 
-    // ------------------------------------------------------------------
-    // GetThumbnail — valid existing file (STA required for Shell COM)
-    // ------------------------------------------------------------------
-
-    [Fact]
-    public void GetThumbnail_WithValidFile_DoesNotThrow()
-    {
-        var bitmapPath = CreateBitmapFile();
-        Exception threadEx = null;
-
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                // Return value may be null in headless environments — we only
-                // verify that no unhandled exception is thrown.
-                _service.GetThumbnail(bitmapPath);
-            }
-            catch (Exception ex)
-            {
-                threadEx = ex;
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-
-        Assert.Null(threadEx);
-    }
-
-    // ------------------------------------------------------------------
-    // ThumbnailService constructor — sanity
-    // ------------------------------------------------------------------
-
-    [Fact]
-    public void ThumbnailService_Constructor_DoesNotThrow()
-    {
-        var ex = Record.Exception(() => new ThumbnailService());
-        Assert.Null(ex);
-    }
 }

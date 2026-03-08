@@ -210,16 +210,6 @@ public class LoadingOperationsTests : IDisposable
         });
     }
 
-    [Fact]
-    public void GetAllPaths_WithEmptyString_DialogHandling()
-    {
-        // This test documents that GetAllPaths with empty rootFolder will open FolderBrowserDialog.
-        // In automated tests, we cannot fully test this without UI automation.
-        // The important behavior is tested above with GetAllPaths_WithValidPath_ReturnsImages.
-        var loadingOps = new LoadingOperations();
-        Assert.NotNull(loadingOps);
-    }
-
     public void Dispose()
     {
         if (Directory.Exists(_tempDirPath))
