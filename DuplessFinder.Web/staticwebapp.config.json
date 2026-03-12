@@ -1,0 +1,15 @@
+{
+    "navigationFallback": {
+        "rewrite": "/index.html"
+    },
+    "globalHeaders": {
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Embedder-Policy": "require-corp"
+    },
+    "mimeTypes": {
+        ".wasm": "application/wasm",
+        ".dll": "application/octet-stream",
+        ".blat": "application/octet-stream",
+        ".dat": "application/octet-stream"
+    }
+}

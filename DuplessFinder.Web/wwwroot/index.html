@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dupless Finder</title>
+    <base href="/" />
+    <script src="coi-serviceworker.js"></script>
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <link href="css/app.css" rel="stylesheet" />
+    <link href="DuplessFinder.Web.styles.css" rel="stylesheet" />
+    <style>
+        .loading-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: #1a1a2e;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        .loading-spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid rgba(255, 255, 255, 0.2);
+            border-top-color: #4fc3f7;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 1rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-screen p {
+            font-size: 1.1rem;
+            opacity: 0.8;
+        }
+
+        #browser-not-supported {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background: #1a1a2e;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .unsupported-card {
+            max-width: 520px;
+            padding: 2.5rem;
+            background: #252540;
+            border-radius: 12px;
+            border: 1px solid #3a3a5c;
+            text-align: center;
+            color: #e0e0e0;
+        }
+
+        .unsupported-icon {
+            width: 56px;
+            height: 56px;
+            color: #e07070;
+            margin-bottom: 1rem;
+        }
+
+        .unsupported-card h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            color: #ffffff;
+        }
+
+        .unsupported-desc {
+            font-size: 0.9rem;
+            line-height: 1.5;
+            color: #b0b0c8;
+            margin-bottom: 1.5rem;
+        }
+
+        .unsupported-desc strong {
+            color: #d0d0e8;
+        }
+
+        .browser-list {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .browser-option {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 0.75rem 1.25rem;
+            background: #2e2e4a;
+            border: 1px solid #4a4a6a;
+            border-radius: 8px;
+            text-decoration: none;
+            color: #e0e0e0;
+            transition: background 0.15s, border-color 0.15s;
+            min-width: 100px;
+        }
+
+        .browser-option:hover {
+            background: #3a3a5c;
+            border-color: #4fc3f7;
+        }
+
+        .browser-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .browser-version {
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 0.2rem;
+        }
+
+        .unsupported-note {
+            font-size: 0.8rem;
+            color: #777;
+            line-height: 1.5;
+        }
+
+        .detected-browser {
+            margin-top: 1rem;
+            font-size: 0.8rem;
+            color: #e07070;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="loading-screen">
+            <div class="loading-spinner"></div>
+            <p>Loading Dupless Finder...</p>
+        </div>
+    </div>
+
+    <div id="browser-not-supported" style="display:none">
+        <div class="unsupported-card">
+            <svg class="unsupported-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+            </svg>
+            <h1>Browser Not Supported</h1>
+            <p class="unsupported-desc">
+                Dupless Finder uses the <strong>File System Access API</strong> and
+                <strong>WebAssembly threads</strong> to scan and compare images locally on your device.
+                These features are only available in Chromium-based browsers.
+            </p>
+            <div class="browser-list">
+                <a class="browser-option" href="https://www.google.com/chrome/" target="_blank" rel="noopener">
+                    <span class="browser-name">Chrome</span>
+                    <span class="browser-version">v86+</span>
+                </a>
+                <a class="browser-option" href="https://www.microsoft.com/edge" target="_blank" rel="noopener">
+                    <span class="browser-name">Edge</span>
+                    <span class="browser-version">v86+</span>
+                </a>
+                <a class="browser-option" href="https://www.opera.com/" target="_blank" rel="noopener">
+                    <span class="browser-name">Opera</span>
+                    <span class="browser-version">v72+</span>
+                </a>
+            </div>
+            <p class="unsupported-note">
+                Firefox, Safari, and mobile browsers are not supported.<br>
+                All processing happens locally &mdash; no files are uploaded anywhere.
+            </p>
+            <p class="detected-browser" id="detected-browser"></p>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui" style="display:none">
+        An unhandled error has occurred.
+        <a href="" class="reload">Reload</a>
+        <a class="dismiss">Dismiss</a>
+    </div>
+
+    <script>
+        (function () {
+            var hasFileSystemAccess = 'showDirectoryPicker' in window;
+            var hasSharedArrayBuffer = typeof window.SharedArrayBuffer !== 'undefined';
+            var isSupported = hasFileSystemAccess && hasSharedArrayBuffer;
+
+            if (!isSupported) {
+                document.getElementById('app').style.display = 'none';
+                document.getElementById('browser-not-supported').style.display = 'flex';
+
+                // Detect and show current browser
+                var ua = navigator.userAgent;
+                var browser = 'Unknown browser';
+                if (ua.indexOf('Firefox') > -1) browser = 'Firefox';
+                else if (ua.indexOf('Safari') > -1 && ua.indexOf('Chrome') === -1) browser = 'Safari';
+                else if (ua.indexOf('Edg/') > -1) browser = 'Edge (old version)';
+                else if (ua.indexOf('Chrome') > -1) browser = 'Chrome (old version)';
+                else if (ua.indexOf('OPR') > -1) browser = 'Opera (old version)';
+
+                var missing = [];
+                if (!hasFileSystemAccess) missing.push('File System Access API');
+                if (!hasSharedArrayBuffer) missing.push('SharedArrayBuffer');
+
+                document.getElementById('detected-browser').textContent =
+                    'Detected: ' + browser + ' — missing: ' + missing.join(', ');
+            }
+        })();
+    </script>
+
+    <script>
+        // Preview zoom/pan — entirely in JS to avoid Blazor round-trip latency
+        (function () {
+            var state = { scale: 1, tx: 0, ty: 0 };
+            var cleanup = null;
+
+            window.__initPreviewZoom = function () {
+                window.__destroyPreviewZoom();
+                state = { scale: 1, tx: 0, ty: 0 };
+
+                var container = document.querySelector('.preview-image-container');
+                var img = container && container.querySelector('img');
+                if (!container || !img) return;
+
+                function applyTransform() {
+                    img.style.transform = 'translate(calc(-50% + ' + state.tx + 'px), calc(-50% + ' + state.ty + 'px)) scale(' + state.scale.toFixed(3) + ')';
+                }
+
+                applyTransform();
+
+                function onWheel(e) {
+                    e.preventDefault();
+                    var factor = e.deltaY < 0 ? 1.1 : 0.9;
+                    state.scale = Math.max(0.1, Math.min(50, state.scale * factor));
+                    applyTransform();
+                }
+
+                var panning = false, lastX = 0, lastY = 0;
+                function onMouseDown(e) {
+                    if (e.button === 0) { panning = true; lastX = e.clientX; lastY = e.clientY; }
+                }
+                function onMouseUp() { panning = false; }
+                function onMouseMove(e) {
+                    if (panning && (e.buttons & 1)) {
+                        state.tx += e.clientX - lastX;
+                        state.ty += e.clientY - lastY;
+                        lastX = e.clientX;
+                        lastY = e.clientY;
+                        applyTransform();
+                    }
+                }
+
+                container.addEventListener('wheel', onWheel, { passive: false });
+                container.addEventListener('mousedown', onMouseDown);
+                window.addEventListener('mouseup', onMouseUp);
+                window.addEventListener('mousemove', onMouseMove);
+
+                cleanup = function () {
+                    container.removeEventListener('wheel', onWheel);
+                    container.removeEventListener('mousedown', onMouseDown);
+                    window.removeEventListener('mouseup', onMouseUp);
+                    window.removeEventListener('mousemove', onMouseMove);
+                };
+            };
+
+            window.__destroyPreviewZoom = function () {
+                if (cleanup) { cleanup(); cleanup = null; }
+            };
+        })();
+    </script>
+
+    <script>
+        if ('showDirectoryPicker' in window && typeof SharedArrayBuffer !== 'undefined') {
+            var script = document.createElement('script');
+            script.src = '_framework/blazor.webassembly.js';
+            document.body.appendChild(script);
+        }
+    </script>
+</body>
+</html>

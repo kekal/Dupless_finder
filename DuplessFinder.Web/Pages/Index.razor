@@ -1,0 +1,531 @@
+@page "/"
+@implements IAsyncDisposable
+@inject IFileAccessService FileAccess
+@inject ICacheService Cache
+@inject IOpenCvService OpenCv
+@inject ICalcOperations CalcOps
+
+<PageTitle>Dupless Finder</PageTitle>
+
+<div class="app-layout">
+    <Toolbar OnOpen="OpenFolder"
+             OnAnalyze="Analyze"
+             OnCancel="Cancel"
+             OnUndo="Undo"
+             ScoreThreshold="@_scoreThreshold"
+             ScoreThresholdChanged="OnThresholdChanged"
+             Progress="@_calcProgress"
+             StatusText="@_statusText"
+             IsProgressVisible="@_isProgressVisible"
+             IncludeSubfolders="@_includeSubfolders"
+             IncludeSubfoldersChanged="OnIncludeSubfoldersChanged"
+             ShowUndo="@(_undoStack.Count > 0)"
+             CanCancel="@(_cts is not null && !_cts.IsCancellationRequested)" />
+
+    @if (!string.IsNullOrEmpty(_warningText))
+    {
+        <div class="alert alert-warning">@_warningText</div>
+    }
+
+    <div class="content-area">
+        <div class="left-panel">
+            @if (_showPairs)
+            {
+                <PairGrid Pairs="@_filteredPairs"
+                          OnDeleteImage="DeleteImage"
+                          OnPreviewImage="OnPairPreviewImage" />
+            }
+            else
+            {
+                <ThumbnailGrid Images="@_images"
+                               OnImageClick="OnThumbnailDoubleClick"
+                               OnDeleteImage="DeleteImage" />
+            }
+        </div>
+        <div class="right-panel">
+            @if (_previewImageUrl is not null)
+            {
+                <ImagePreview ImageUrl="@_previewImageUrl"
+                              AlternateImageUrl="@_alternateImageUrl"
+                              OnClose="ClosePreview" />
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool _disposed;
+    private List<ImageInfo> _images = [];
+    private List<ImagePair> _filteredPairs = [];
+    private List<PairSimilarityInfo> _allMatches = [];
+    private Dictionary<string, ImageInfo> _imageLookup = new();
+    private bool _showPairs;
+    private double _scoreThreshold = 200;
+    private double _calcProgress;
+    private string _statusText = "Ready";
+    private string? _warningText;
+    private bool _isProgressVisible;
+    private bool _includeSubfolders;
+    private string? _previewImageUrl;
+    private string? _alternateImageUrl;
+    private Stack<(string originalPath, string deletedName)> _undoStack = new();
+    private CancellationTokenSource? _cts;
+    private Timer? _debounceTimer;
+
+    // Cached SIFT descriptors for re-analysis
+    private Dictionary<string, SiftResult>? _cachedDescriptors;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var isSupported = await FileAccess.IsFileSystemAccessSupportedAsync();
+        if (!isSupported)
+        {
+            _statusText = "File System Access API is not supported in this browser.";
+            StateHasChanged();
+            return;
+        }
+
+        await Cache.InitializeAsync();
+    }
+
+    private async Task OpenFolder()
+    {
+        var dirName = await FileAccess.PickDirectoryAsync();
+        if (dirName is null) return;
+        await LoadFolderContent();
+    }
+
+    private async Task LoadFolderContent()
+    {
+        if (_cts is not null)
+        {
+            await _cts.CancelAsync();
+            _cts.Dispose();
+        }
+        _cts = new CancellationTokenSource();
+        var ct = _cts.Token;
+
+        _showPairs = false;
+        _filteredPairs = [];
+        _allMatches = [];
+        _imageLookup = new();
+        _cachedDescriptors = null;
+        _warningText = null;
+        _isProgressVisible = true;
+        _calcProgress = 0;
+        await ClosePreviewAsync();
+        StateHasChanged();
+
+        try
+        {
+            // Phase 1: Scan for images
+            _statusText = "Scanning folder...";
+            StateHasChanged();
+
+            var fileEntries = await FileAccess.ScanImagesAsync(_includeSubfolders);
+            if (fileEntries.Count == 0)
+            {
+                _statusText = "No images found in selected folder.";
+                _isProgressVisible = false;
+                StateHasChanged();
+                return;
+            }
+
+            _images = fileEntries.Select(fe => new ImageInfo(fe)).ToList();
+            RebuildImageLookup();
+
+            if (_images.Count > 2000)
+            {
+                _warningText = $"Warning: {_images.Count} images found. Analysis may be slow for large collections. Consider narrowing the folder.";
+            }
+
+            _statusText = $"Found {_images.Count} images.";
+            StateHasChanged();
+
+            _statusText = $"Loading thumbnails... 0/{_images.Count}";
+            StateHasChanged();
+
+            var loaded = 0;
+            foreach (var img in _images)
+            {
+                ct.ThrowIfCancellationRequested();
+                await img.LoadThumbnailAsync(Cache, FileAccess, OpenCv, ct: ct);
+                loaded++;
+                _calcProgress = (double)loaded / _images.Count * 100.0;
+                _statusText = $"Loading thumbnails... {loaded}/{_images.Count}";
+                if (loaded % 10 == 0 || loaded == _images.Count)
+                {
+                    StateHasChanged();
+                }
+            }
+
+            ct.ThrowIfCancellationRequested();
+
+            // Phase 3: Check for cached results
+            var cached = await Cache.GetAllSimilarityResultsAsync();
+            if (cached is { Count: > 0 })
+            {
+                // Convert SimilarityEntry to PairSimilarityInfo using current images
+                var fingerprintToPath = _images.ToDictionary(i => i.Fingerprint, i => i.Path);
+                _allMatches = cached
+                    .Where(e => fingerprintToPath.ContainsKey(e.Fingerprint1) && fingerprintToPath.ContainsKey(e.Fingerprint2))
+                    .Select(e => new PairSimilarityInfo(
+                        fingerprintToPath[e.Fingerprint1],
+                        fingerprintToPath[e.Fingerprint2],
+                        e.Fingerprint1,
+                        e.Fingerprint2,
+                        e.Score))
+                    .ToList();
+
+                PopulatePairs();
+                if (_filteredPairs.Count > 0)
+                {
+                    _statusText = $"Loaded {_filteredPairs.Count} cached pairs. Click Analyze to re-scan.";
+                    _isProgressVisible = false;
+                    StateHasChanged();
+                    return;
+                }
+            }
+
+            // Phase 4: Auto-analyze
+            _statusText = "Thumbnails loaded. Starting analysis...";
+            StateHasChanged();
+            await RunAnalysis(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            _statusText = "Operation cancelled.";
+            _isProgressVisible = false;
+        }
+        catch (Exception ex)
+        {
+            _statusText = $"Error: {ex.Message}";
+            _isProgressVisible = false;
+        }
+
+        StateHasChanged();
+    }
+
+    // --- Analyze: compute SIFT hashes and create match collection ---
+    private async Task Analyze()
+    {
+        if (_images.Count < 2)
+        {
+            _statusText = "Need at least 2 images to analyze.";
+            return;
+        }
+
+        // Cancel previous, start fresh
+        if (_cts is not null)
+        {
+            await _cts.CancelAsync();
+            _cts.Dispose();
+        }
+        _cts = new CancellationTokenSource();
+
+        _showPairs = false;
+        _cachedDescriptors = null;
+        _statusText = "Starting analysis...";
+        StateHasChanged();
+
+        try
+        {
+            await RunAnalysis(_cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            _statusText = "Analysis cancelled.";
+            _isProgressVisible = false;
+        }
+        catch (Exception ex)
+        {
+            _statusText = $"Analysis error: {ex.Message}";
+            _isProgressVisible = false;
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task RunAnalysis(CancellationToken ct)
+    {
+        if (_images.Count < 2)
+        {
+            _statusText = "Need at least 2 images to analyze.";
+            return;
+        }
+
+        // Ensure OpenCV is loaded
+        _statusText = "Loading OpenCV...";
+        StateHasChanged();
+        await OpenCv.EnsureLoadedAsync();
+
+        _isProgressVisible = true;
+        var imageCount = _images.Count;
+
+        // Phase: Hashing
+        _statusText = $"Computing hashes... 0/{imageCount}";
+        StateHasChanged();
+
+        var hashProgress = new Progress<double>(value =>
+        {
+            _calcProgress = value;
+            var done = (int)(value / 100.0 * imageCount);
+            _statusText = $"Computing hashes... {done}/{imageCount}";
+            if (!_disposed) _ = InvokeAsync(StateHasChanged);
+        });
+
+        var (hashDict, pathToFingerprint) = await CalcOps.CalcSiftHashesAsync(_images, hashProgress, ct);
+        _cachedDescriptors = hashDict;
+        ct.ThrowIfCancellationRequested();
+
+        // Phase: Matching
+        var pairCount = _cachedDescriptors.Count * (_cachedDescriptors.Count - 1) / 2;
+        _statusText = $"Matching pairs... 0/{pairCount}";
+        StateHasChanged();
+
+        var matchProgress = new Progress<double>(value =>
+        {
+            _calcProgress = value;
+            var done = (int)(value / 100.0 * pairCount);
+            _statusText = $"Matching pairs... {done}/{pairCount}";
+            if (!_disposed) _ = InvokeAsync(StateHasChanged);
+        });
+
+        var rawMatches = await CalcOps.CreateMatchCollectionAsync(_cachedDescriptors, pathToFingerprint, matchProgress, ct);
+        ct.ThrowIfCancellationRequested();
+
+        // Filter out entries with degenerate scores (no good matches found)
+        _allMatches = rawMatches.Where(m => m.Score < 1000 && m.Score < double.MaxValue).ToList();
+
+        // Store results in cache
+        var similarityEntries = _allMatches.Select(m => new SimilarityEntry(m.Fingerprint1, m.Fingerprint2, m.Score));
+        await Cache.StoreSimilarityBatchAsync(similarityEntries);
+
+        _isProgressVisible = false;
+        PopulatePairs();
+        StateHasChanged();
+    }
+
+    private Task Cancel()
+    {
+        _cts?.Cancel();
+        _statusText = "Cancelling...";
+        return Task.CompletedTask;
+    }
+
+    private async Task DeleteImage(ImageInfo? img)
+    {
+        if (img is null || string.IsNullOrEmpty(img.Path)) return;
+
+        try
+        {
+            if (img.ThumbnailDataUrl is not null && img.ThumbnailDataUrl.StartsWith("blob:"))
+            {
+                await FileAccess.RevokeObjectUrlAsync(img.ThumbnailDataUrl);
+            }
+
+            var deletedName = await FileAccess.MoveToDeletedAsync(img.Path);
+
+            _undoStack.Push((img.Path, deletedName));
+
+            await ClosePreviewAsync();
+
+            _images.Remove(img);
+            _imageLookup.Remove(img.Path);
+
+            var remaining = _filteredPairs
+                .Where(p => p.Image1?.Path != img.Path && p.Image2?.Path != img.Path)
+                .ToList();
+            _filteredPairs = remaining;
+
+            if (remaining.Count == 0 && _showPairs)
+            {
+                _showPairs = false;
+                _statusText = "All pairs resolved.";
+            }
+            else if (_showPairs)
+            {
+                _statusText = $"{remaining.Count} pairs remaining.";
+            }
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _statusText = $"Failed to delete: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private async Task Undo()
+    {
+        if (_undoStack.Count == 0) return;
+
+        var (originalPath, deletedName) = _undoStack.Pop();
+
+        try
+        {
+            await FileAccess.RestoreFromDeletedAsync(originalPath, deletedName);
+
+            var restoredEntries = await FileAccess.ScanImagesAsync(_includeSubfolders);
+            var restoredEntry = restoredEntries.FirstOrDefault(fe => fe.Path == originalPath);
+
+            if (restoredEntry is not null)
+            {
+                var restoredImage = new ImageInfo(restoredEntry);
+                _images.Add(restoredImage);
+                RebuildImageLookup();
+                await restoredImage.LoadThumbnailAsync(Cache, FileAccess, OpenCv);
+
+                if (_allMatches.Count > 0)
+                {
+                    PopulatePairs();
+                }
+
+                _statusText = $"Restored: {restoredImage.Name}";
+            }
+            else
+            {
+                _statusText = "Restored file but could not reload metadata.";
+            }
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _statusText = $"Undo failed: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private void OnThresholdChanged(double newValue)
+    {
+        _scoreThreshold = newValue;
+
+        // Debounce refilter by 200ms
+        _debounceTimer?.Dispose();
+        _debounceTimer = new Timer(_ =>
+        {
+            // 3.1 - Guard against disposed component
+            if (_disposed) return;
+            _ = InvokeAsync(() =>
+            {
+                if (_disposed) return;
+                PopulatePairs();
+                StateHasChanged();
+            });
+        }, null, 200, Timeout.Infinite);
+    }
+
+    private void OnIncludeSubfoldersChanged(bool value)
+    {
+        _includeSubfolders = value;
+    }
+
+    private async Task OnThumbnailDoubleClick(ImageInfo img)
+    {
+        await ShowPreview(img, null);
+    }
+
+    private async Task OnPairPreviewImage((ImageInfo primary, ImageInfo? alternate) args)
+    {
+        await ShowPreview(args.primary, args.alternate);
+    }
+
+    private async Task ShowPreview(ImageInfo img, ImageInfo? alternate)
+    {
+        await RevokePreviewUrls();
+
+        _previewImageUrl = await FileAccess.CreateObjectUrlAsync(img.Path);
+
+        if (alternate is not null)
+        {
+            _alternateImageUrl = await FileAccess.CreateObjectUrlAsync(alternate.Path);
+        }
+        else
+        {
+            _alternateImageUrl = null;
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task ClosePreview()
+    {
+        await RevokePreviewUrls();
+        _previewImageUrl = null;
+        _alternateImageUrl = null;
+        StateHasChanged();
+    }
+
+    private async Task ClosePreviewAsync()
+    {
+        await RevokePreviewUrls();
+        _previewImageUrl = null;
+        _alternateImageUrl = null;
+    }
+
+    private async Task RevokePreviewUrls()
+    {
+        if (_previewImageUrl is not null)
+        {
+            await FileAccess.RevokeObjectUrlAsync(_previewImageUrl);
+        }
+        if (_alternateImageUrl is not null)
+        {
+            await FileAccess.RevokeObjectUrlAsync(_alternateImageUrl);
+        }
+    }
+
+    private void RebuildImageLookup()
+    {
+        _imageLookup = _images.GroupBy(i => i.Path).ToDictionary(g => g.Key, g => g.First());
+    }
+
+    private void PopulatePairs()
+    {
+        var pairs = _allMatches
+            .Where(m => m.Score < _scoreThreshold)
+            .Select(m =>
+            {
+                _imageLookup.TryGetValue(m.FilePath1, out var img1);
+                _imageLookup.TryGetValue(m.FilePath2, out var img2);
+                if (img1 is null || img2 is null) return null;
+                return new ImagePair
+                {
+                    Image1 = img1,
+                    Image2 = img2,
+                    Score = m.Score
+                };
+            })
+            .Where(p => p is not null)
+            .Cast<ImagePair>()
+            .OrderBy(p => p.Score)
+            .ToList();
+
+        _filteredPairs = pairs;
+
+        if (pairs.Count > 0)
+        {
+            _showPairs = true;
+            _statusText = $"Found {pairs.Count} similar pairs.";
+        }
+        else
+        {
+            _statusText = _allMatches.Count > 0
+                ? "No similar pairs found at current threshold."
+                : "Analysis complete. No similar pairs found.";
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        _debounceTimer?.Dispose();
+        if (_cts is not null)
+        {
+            await _cts.CancelAsync();
+            _cts.Dispose();
+        }
+    }
+}

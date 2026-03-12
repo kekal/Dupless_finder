@@ -1,0 +1,16 @@
+This directory should contain opencv.js (the contrib WASM build with SIFT support).
+
+To obtain opencv.js with SIFT:
+
+Option 1: Download prebuilt from OpenCV GitHub releases
+  - Get the opencv.js contrib WASM build from https://github.com/nicedayitconsulting/opencv.js/releases
+  - Look for a build that includes xfeatures2d (SIFT)
+
+Option 2: Build from source
+  python platforms/js/build_js.py build_js \
+      --build_wasm \
+      --cmake_option="-DOPENCV_EXTRA_MODULES_PATH=../../opencv_contrib/modules" \
+      --cmake_option="-DBUILD_LIST=core,imgproc,features2d,flann,xfeatures2d"
+
+Place the resulting opencv.js file in this directory.
+The file will be loaded lazily when the user clicks "Analyze".

@@ -1,0 +1,61 @@
+<div class="pair-grid">
+    <Virtualize Items="@Pairs" Context="pair" ItemSize="220" OverscanCount="5">
+        @if (pair.Image1 is not null && pair.Image2 is not null)
+        {
+            <div class="pair-row" @key="pair">
+                <div class="pair-image-cell">
+                    <span class="pair-filename" title="@pair.Image1.Path">@pair.Image1.Name</span>
+                    <div class="pair-image-wrapper" @onclick="() => HandleImageClick(pair.Image1, pair.Image2)">
+                        @if (pair.Image1.ThumbnailDataUrl is not null)
+                        {
+                            <img src="@pair.Image1.ThumbnailDataUrl" alt="@pair.Image1.Name" />
+                        }
+                        else
+                        {
+                            <span class="thumbnail-placeholder">Loading...</span>
+                        }
+                        <button class="delete-btn" @onclick="async () => await OnDeleteImage.InvokeAsync(pair.Image1)"
+                                @onclick:stopPropagation="true"
+                                title="Delete image">
+                            X
+                        </button>
+                    </div>
+                </div>
+
+                <div class="pair-score">
+                    <span>@pair.ScoreDisplay</span>
+                </div>
+
+                <div class="pair-image-cell">
+                    <span class="pair-filename" title="@pair.Image2.Path">@pair.Image2.Name</span>
+                    <div class="pair-image-wrapper" @onclick="() => HandleImageClick(pair.Image2, pair.Image1)">
+                        @if (pair.Image2.ThumbnailDataUrl is not null)
+                        {
+                            <img src="@pair.Image2.ThumbnailDataUrl" alt="@pair.Image2.Name" />
+                        }
+                        else
+                        {
+                            <span class="thumbnail-placeholder">Loading...</span>
+                        }
+                        <button class="delete-btn" @onclick="async () => await OnDeleteImage.InvokeAsync(pair.Image2)"
+                                @onclick:stopPropagation="true"
+                                title="Delete image">
+                            X
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+    </Virtualize>
+</div>
+
+@code {
+    [Parameter] public List<ImagePair> Pairs { get; set; } = [];
+    [Parameter] public EventCallback<ImageInfo> OnDeleteImage { get; set; }
+    [Parameter] public EventCallback<(ImageInfo primary, ImageInfo? alternate)> OnPreviewImage { get; set; }
+
+    private async Task HandleImageClick(ImageInfo primary, ImageInfo? alternate)
+    {
+        await OnPreviewImage.InvokeAsync((primary, alternate));
+    }
+}

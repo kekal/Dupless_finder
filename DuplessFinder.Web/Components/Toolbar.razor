@@ -1,0 +1,96 @@
+<div class="toolbar">
+    <label class="toolbar-checkbox" title="When checked, searches all subfolders recursively">
+        <input type="checkbox" checked="@IncludeSubfolders"
+               @onchange="OnCheckboxChanged" />
+        <span class="checkbox-label">Include subfolders</span>
+    </label>
+
+    <div class="toolbar-separator"></div>
+
+    <button class="toolbar-btn" @onclick="OnOpen" title="Open folder and scan for images">
+        Open
+    </button>
+
+    <button class="toolbar-btn" @onclick="OnAnalyze" title="Re-analyze images (SIFT matching)">
+        Analyze
+    </button>
+
+    @if (ShowUndo)
+    {
+        <button class="toolbar-btn" @onclick="OnUndo" title="Undo last delete (restore file)">
+            Undo Deletion
+        </button>
+    }
+
+    <div class="toolbar-separator"></div>
+
+    <span class="toolbar-label" title="Lower = stricter matching (fewer, more similar pairs)">
+        Sensitivity:
+    </span>
+
+    <input type="range"
+           class="toolbar-slider"
+           min="20"
+           max="500"
+           step="10"
+           value="@ScoreThreshold"
+           @oninput="OnSliderInput"
+           title="Score threshold: lower = stricter matching" />
+
+    <span class="toolbar-score">@ScoreThreshold.ToString("F0")</span>
+
+    @if (ShowUndo)
+    {
+        <div class="toolbar-separator"></div>
+    }
+
+    <span class="toolbar-status">@StatusText</span>
+
+    @if (IsProgressVisible)
+    {
+        <div class="toolbar-progress-container" title="@(Progress.ToString("F1"))%">
+            <div class="toolbar-progress-bar" style="width: @(Progress.ToString("F1"))%"></div>
+        </div>
+
+        @if (CanCancel)
+        {
+            <button class="toolbar-btn toolbar-cancel" @onclick="OnCancel" title="Cancel current operation">
+                Cancel
+            </button>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback OnOpen { get; set; }
+    [Parameter] public EventCallback OnAnalyze { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+    [Parameter] public EventCallback OnUndo { get; set; }
+
+    [Parameter] public double ScoreThreshold { get; set; }
+    [Parameter] public EventCallback<double> ScoreThresholdChanged { get; set; }
+
+    [Parameter] public double Progress { get; set; }
+    [Parameter] public string StatusText { get; set; } = "Ready";
+    [Parameter] public bool IsProgressVisible { get; set; }
+
+    [Parameter] public bool IncludeSubfolders { get; set; }
+    [Parameter] public EventCallback<bool> IncludeSubfoldersChanged { get; set; }
+
+    [Parameter] public bool ShowUndo { get; set; }
+    [Parameter] public bool CanCancel { get; set; }
+
+    private async Task OnCheckboxChanged(ChangeEventArgs e)
+    {
+        var newValue = (bool)(e.Value ?? false);
+        await IncludeSubfoldersChanged.InvokeAsync(newValue);
+    }
+
+    private async Task OnSliderInput(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), out var val))
+        {
+            await ScoreThresholdChanged.InvokeAsync(val);
+        }
+    }
+}

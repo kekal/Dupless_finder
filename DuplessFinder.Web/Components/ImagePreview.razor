@@ -1,0 +1,89 @@
+@* zoom/pan handled in JS to avoid Blazor round-trip latency (Chrome compatibility) *@
+@inject IJSRuntime Js
+@implements IAsyncDisposable
+
+<div class="preview-overlay"
+     @oncontextmenu="HandleRightClick"
+     @oncontextmenu:preventDefault="true">
+
+    <button class="preview-close-btn" @onclick="OnClose"
+            @onclick:stopPropagation="true">
+        CLOSE
+    </button>
+
+    <div class="preview-image-container"
+         @onmousedown="HandleMouseDown"
+         @onmousedown:preventDefault="false"
+         @onmouseup="HandleMouseUp"
+         @onmouseup:preventDefault="false">
+        <img src="@CurrentImageUrl" alt="Preview" class="preview-image" draggable="false" />
+    </div>
+</div>
+
+@code {
+    [Parameter] public string ImageUrl { get; set; } = string.Empty;
+    [Parameter] public string? AlternateImageUrl { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private bool _showingAlternate;
+    private string? _previousImageUrl;
+
+    private string CurrentImageUrl => _showingAlternate && AlternateImageUrl is not null
+        ? AlternateImageUrl
+        : ImageUrl;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Js.InvokeVoidAsync("window.__initPreviewZoom");
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_previousImageUrl is not null && _previousImageUrl != ImageUrl)
+        {
+            _showingAlternate = false;
+            try
+            {
+                await Js.InvokeVoidAsync("window.__destroyPreviewZoom");
+                await Js.InvokeVoidAsync("window.__initPreviewZoom");
+            }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+        }
+        _previousImageUrl = ImageUrl;
+    }
+
+    private void HandleMouseDown(MouseEventArgs e)
+    {
+        if (e.Button == 0 && AlternateImageUrl is not null)
+        {
+            _showingAlternate = true;
+        }
+    }
+
+    private void HandleMouseUp(MouseEventArgs e)
+    {
+        if (e.Button == 0 && _showingAlternate)
+        {
+            _showingAlternate = false;
+        }
+    }
+
+    private async Task HandleRightClick(MouseEventArgs e)
+    {
+        await OnClose.InvokeAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await Js.InvokeVoidAsync("window.__destroyPreviewZoom");
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+    }
+}

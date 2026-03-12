@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Dupples_finder_UI": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DUPLESS_VERBOSE1": "1"
+      }
+    }
+  }
+}

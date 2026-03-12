@@ -1,0 +1,9 @@
+.git
+.claude
+.vs
+**/bin
+**/obj
+Dupples_finder_UI
+Dupless_finder_Tests
+*.md
+*.sln

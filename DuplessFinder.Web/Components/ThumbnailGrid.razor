@@ -1,0 +1,33 @@
+<div class="thumbnail-grid">
+    <Virtualize Items="@Images" Context="image" OverscanCount="10">
+        <div class="thumbnail-cell" @key="image" @ondblclick="() => HandleDoubleClick(image)">
+            <div class="thumbnail-image-wrapper">
+                @if (image.ThumbnailDataUrl is not null)
+                {
+                    <img src="@image.ThumbnailDataUrl" alt="@image.Name" loading="lazy" />
+                }
+                else
+                {
+                    <span class="thumbnail-placeholder">Loading...</span>
+                }
+            </div>
+            <span class="thumbnail-filename" title="@image.Path">@image.Name</span>
+            <button class="delete-btn" @onclick="async () => await OnDeleteImage.InvokeAsync(image)"
+                    @onclick:stopPropagation="true"
+                    title="Delete image">
+                X
+            </button>
+        </div>
+    </Virtualize>
+</div>
+
+@code {
+    [Parameter] public List<ImageInfo> Images { get; set; } = [];
+    [Parameter] public EventCallback<ImageInfo> OnImageClick { get; set; }
+    [Parameter] public EventCallback<ImageInfo> OnDeleteImage { get; set; }
+
+    private async Task HandleDoubleClick(ImageInfo image)
+    {
+        await OnImageClick.InvokeAsync(image);
+    }
+}
