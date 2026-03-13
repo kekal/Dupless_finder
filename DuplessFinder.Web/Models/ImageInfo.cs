@@ -68,7 +68,7 @@ public class ImageInfo : IDisposable
 
             if (opencvService != null)
             {
-                thumbBytes = await opencvService.GenerateThumbnailAsync(fileBytes, maxSize);
+                thumbBytes = await opencvService.GenerateThumbnailAsync(fileBytes, maxSize, Name);
             }
 
             ct.ThrowIfCancellationRequested();

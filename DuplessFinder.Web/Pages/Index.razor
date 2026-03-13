@@ -12,6 +12,7 @@
              OnAnalyze="Analyze"
              OnCancel="Cancel"
              OnUndo="Undo"
+             OnClearCache="ClearCache"
              ScoreThreshold="@_scoreThreshold"
              ScoreThresholdChanged="OnThresholdChanged"
              Progress="@_calcProgress"
@@ -296,6 +297,17 @@
         _cts?.Cancel();
         _statusText = "Cancelling...";
         return Task.CompletedTask;
+    }
+
+    private async Task ClearCache()
+    {
+        await Cache.ClearAllAsync();
+        _allMatches = [];
+        _filteredPairs = [];
+        _cachedDescriptors = null;
+        _showPairs = false;
+        _statusText = "Cache cleared.";
+        StateHasChanged();
     }
 
     private async Task DeleteImage(ImageInfo? img)

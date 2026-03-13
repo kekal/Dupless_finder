@@ -1,7 +1,9 @@
 // Requires a Chromium-based browser with File System Access API support.
 
+import { isHeic, convertHeicToJpeg } from './heic-helper.js';
+
 const supportedExtensions = new Set([
-    'jpg', 'jpeg', 'png', 'bmp', 'tiff', 'tif', 'webp'
+    'jpg', 'jpeg', 'png', 'bmp', 'tiff', 'tif', 'webp', 'heic', 'heif'
 ]);
 
 const deletedFolder = '.deleted';
@@ -265,11 +267,20 @@ export async function restoreFromDeleted(originalPath, deletedName) {
     }
 }
 
+async function toBlobUrl(file, fileName) {
+    if (isHeic(fileName)) {
+        // Browser can't display HEIC directly — convert to JPEG first
+        const jpegBlob = await convertHeicToJpeg(file, fileName);
+        return URL.createObjectURL(jpegBlob);
+    }
+    return URL.createObjectURL(file);
+}
+
 export async function createObjectUrl(relativePath) {
     // Check picked files first (from <input type="file">)
     const picked = pickedFiles.get(relativePath);
     if (picked) {
-        return URL.createObjectURL(picked);
+        return await toBlobUrl(picked, relativePath);
     }
 
     if (!rootDirHandle) {
@@ -279,8 +290,7 @@ export async function createObjectUrl(relativePath) {
     try {
         const fileHandle = await resolveFile(rootDirHandle, relativePath);
         const file = await fileHandle.getFile();
-        const url = URL.createObjectURL(file);
-        return url;
+        return await toBlobUrl(file, relativePath);
     } catch (err) {
         console.error(`[file-access] Error creating object URL for ${relativePath}:`, err);
         throw err;

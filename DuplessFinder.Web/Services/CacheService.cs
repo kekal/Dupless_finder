@@ -138,6 +138,22 @@ public class CacheService : ICacheService
         }
     }
 
+    public async Task ClearAllAsync()
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(CacheService));
+
+        try
+        {
+            var mod = await GetModuleAsync();
+            await mod.InvokeVoidAsync("clearCache");
+            _logger.LogInformation("IndexedDB cache cleared.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "ClearAllAsync failed: {Message}", ex.Message);
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_disposed) return;

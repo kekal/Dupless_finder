@@ -1,4 +1,5 @@
 import { WorkerPool } from './worker-pool.js';
+import { createImageBitmapSafe, isHeic, convertHeicToJpeg, extractHeicThumbnail } from './heic-helper.js';
 
 const siftResizePx = 200;
 const lowesRatio = 0.7;
@@ -82,9 +83,17 @@ export async function ensureLoaded() {
 
 // Uses createImageBitmap + OffscreenCanvas because cv.imdecode is not
 // exposed in the standard opencv.js WASM bindings.
-async function decodeAndResize(imageBytes, maxDim) {
+async function decodeAndResize(imageBytes, maxDim, fileName) {
     const blob = new Blob([imageBytes]);
-    const bitmap = await window.createImageBitmap(blob);
+
+    // For HEIC: use convertHeicToJpeg which caches the result, avoiding redundant full decodes
+    let bitmap;
+    if (isHeic(fileName)) {
+        const jpegBlob = await convertHeicToJpeg(blob, fileName);
+        bitmap = await createImageBitmap(jpegBlob);
+    } else {
+        bitmap = await createImageBitmapSafe(blob, fileName);
+    }
 
     const w = bitmap.width;
     const h = bitmap.height;
@@ -119,7 +128,7 @@ function matFromFloat32(data, rows, cols) {
 }
 
 // Returns descriptorData as Uint8Array (Float32 bytes) so Blazor marshals it as byte[]
-export async function computeSift(imageBytes) {
+export async function computeSift(imageBytes, fileName) {
     await ensureLoaded();
 
     let img = null;
@@ -130,7 +139,7 @@ export async function computeSift(imageBytes) {
     let mask = null;
 
     try {
-        img = await decodeAndResize(imageBytes, siftResizePx);
+        img = await decodeAndResize(imageBytes, siftResizePx, fileName);
 
         gray = new cv.Mat();
         cv.cvtColor(img, gray, cv.COLOR_RGBA2GRAY);
@@ -199,9 +208,60 @@ export async function matchPair(desc1, desc2) {
     }
 }
 
-export async function generateThumbnail(imageBytes, maxSize) {
+export async function generateThumbnail(imageBytes, maxSize, fileName) {
     const blob = new Blob([imageBytes]);
-    const bitmap = await window.createImageBitmap(blob);
+
+    // Fast path for HEIC: extract EXIF IFD1 JPEG thumbnail (~1-5ms vs ~500-1500ms full decode)
+    if (isHeic(fileName)) {
+        try {
+            const t0 = performance.now();
+            const thumbBlob = await extractHeicThumbnail(blob);
+            if (thumbBlob) {
+                const thumbBitmap = await createImageBitmap(thumbBlob);
+                const elapsed = (performance.now() - t0).toFixed(0);
+                console.log(`[opencv-interop] HEIC EXIF thumbnail for ${fileName}: ${thumbBitmap.width}x${thumbBitmap.height} in ${elapsed}ms`);
+
+                const w = thumbBitmap.width;
+                const h = thumbBitmap.height;
+                const scale = Math.min(maxSize / Math.max(w, h), 1.0);
+                const newW = Math.round(w * scale);
+                const newH = Math.round(h * scale);
+
+                const canvas = new OffscreenCanvas(newW, newH);
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(thumbBitmap, 0, 0, newW, newH);
+                thumbBitmap.close();
+
+                const jpegBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
+                const buffer = await jpegBlob.arrayBuffer();
+                return new Uint8Array(buffer);
+            }
+        } catch (err) {
+            console.warn(`[opencv-interop] HEIC thumbnail extraction failed for ${fileName}:`, err.message);
+        }
+        console.log(`[opencv-interop] No EXIF thumbnail for ${fileName}, falling back to full decode.`);
+        // Use convertHeicToJpeg so the result is cached for SIFT (avoids double decode)
+        const jpegFull = await convertHeicToJpeg(blob, fileName);
+        const bitmap = await createImageBitmap(jpegFull);
+
+        const w = bitmap.width;
+        const h = bitmap.height;
+        const scale = Math.min(maxSize / Math.max(w, h), 1.0);
+        const newW = Math.round(w * scale);
+        const newH = Math.round(h * scale);
+
+        const canvas = new OffscreenCanvas(newW, newH);
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(bitmap, 0, 0, newW, newH);
+        bitmap.close();
+
+        const jpegBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
+        const buffer = await jpegBlob.arrayBuffer();
+        return new Uint8Array(buffer);
+    }
+
+    // Standard path: full decode + resize (JPEG/PNG — instant via native createImageBitmap)
+    const bitmap = await createImageBitmapSafe(blob, fileName);
 
     const w = bitmap.width;
     const h = bitmap.height;
@@ -209,7 +269,7 @@ export async function generateThumbnail(imageBytes, maxSize) {
     const newW = Math.round(w * scale);
     const newH = Math.round(h * scale);
 
-    const canvas = new window.OffscreenCanvas(newW, newH);
+    const canvas = new OffscreenCanvas(newW, newH);
     const ctx = canvas.getContext('2d');
     ctx.drawImage(bitmap, 0, 0, newW, newH);
     bitmap.close();
@@ -238,7 +298,7 @@ export function terminateWorkerPool() {
     }
 }
 
-export async function computeSiftInWorker(imageBytes, fingerprint) {
+export async function computeSiftInWorker(imageBytes, fingerprint, fileName) {
     if (!workerPool) {
         initWorkerPool();
     }
@@ -248,9 +308,22 @@ export async function computeSiftInWorker(imageBytes, fingerprint) {
         return { fingerprint, rows: cached.rows, cols: cached.cols, descriptorData: cached.descriptorData };
     }
 
-    const buffer = imageBytes.buffer.slice(
-        imageBytes.byteOffset,
-        imageBytes.byteOffset + imageBytes.byteLength
+    // Convert HEIC to JPEG on main thread before sending to worker
+    // (workers can't use ES module imports for libheif-js)
+    let bytes = imageBytes;
+    if (isHeic(fileName)) {
+        try {
+            const blob = new Blob([imageBytes]);
+            const jpegBlob = await convertHeicToJpeg(blob, fileName);
+            bytes = new Uint8Array(await jpegBlob.arrayBuffer());
+        } catch (e) {
+            console.warn('[opencv-interop] HEIC pre-conversion failed, sending raw bytes to worker:', e.message);
+        }
+    }
+
+    const buffer = bytes.buffer.slice(
+        bytes.byteOffset,
+        bytes.byteOffset + bytes.byteLength
     );
 
     const result = await workerPool.execute(

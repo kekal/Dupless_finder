@@ -71,7 +71,7 @@ public class CalcOperations : ICalcOperations
                     continue;
                 }
 
-                var siftResult = await _opencvService.ComputeSiftAsync(fileBytes, image.Fingerprint);
+                var siftResult = await _opencvService.ComputeSiftAsync(fileBytes, image.Fingerprint, image.Name);
                 if (siftResult?.DescriptorData is not { Length: > 0 })
                 {
                     _logger.LogWarning("Skipping '{ImageName}': no SIFT keypoints detected.", image.Name);

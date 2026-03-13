@@ -6,6 +6,8 @@ public class OpenCvService : IOpenCvService
 {
     private readonly IJSRuntime _js;
     private readonly ILogger<OpenCvService> _logger;
+    private static readonly string CacheBuster = Guid.NewGuid().ToString("N")[..8];
+
     private IJSObjectReference? _module;
     private readonly SemaphoreSlim _moduleLock = new(1, 1);
     private bool _disposed;
@@ -20,7 +22,7 @@ public class OpenCvService : IOpenCvService
     {
         if (_module is not null) return _module;
         await _moduleLock.WaitAsync();
-        try { return _module ??= await _js.InvokeAsync<IJSObjectReference>("import", "./js/opencv-interop.js"); }
+        try { return _module ??= await _js.InvokeAsync<IJSObjectReference>("import", $"./js/opencv-interop.js?v={CacheBuster}"); }
         finally { _moduleLock.Release(); }
     }
 
@@ -40,14 +42,14 @@ public class OpenCvService : IOpenCvService
         }
     }
 
-    public async Task<SiftResult?> ComputeSiftAsync(byte[] imageBytes, string fingerprint)
+    public async Task<SiftResult?> ComputeSiftAsync(byte[] imageBytes, string fingerprint, string? fileName = null)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(OpenCvService));
 
         try
         {
             var mod = await GetModuleAsync();
-            var result = await mod.InvokeAsync<SiftResult?>("computeSift", imageBytes);
+            var result = await mod.InvokeAsync<SiftResult?>("computeSift", imageBytes, fileName);
             return result;
         }
         catch (Exception ex)
@@ -76,14 +78,14 @@ public class OpenCvService : IOpenCvService
         }
     }
 
-    public async Task<byte[]> GenerateThumbnailAsync(byte[] imageBytes, int maxSize)
+    public async Task<byte[]> GenerateThumbnailAsync(byte[] imageBytes, int maxSize, string? fileName = null)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(OpenCvService));
 
         try
         {
             var mod = await GetModuleAsync();
-            var thumbBytes = await mod.InvokeAsync<byte[]>("generateThumbnail", imageBytes, maxSize);
+            var thumbBytes = await mod.InvokeAsync<byte[]>("generateThumbnail", imageBytes, maxSize, fileName);
             return thumbBytes;
         }
         catch (Exception ex)

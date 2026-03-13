@@ -12,6 +12,10 @@
         Analyze Gallery
     </button>
 
+    <button class="toolbar-btn" @onclick="OnClearCache" title="Clear all cached thumbnails, SIFT data, and similarity results from IndexedDB">
+        Clear Cache
+    </button>
+
     @if (ShowUndo)
     {
         <button class="toolbar-btn" @onclick="OnUndo" title="Undo last delete (restore file)">
@@ -65,6 +69,7 @@
     [Parameter] public EventCallback OnAnalyze { get; set; }
     [Parameter] public EventCallback OnCancel { get; set; }
     [Parameter] public EventCallback OnUndo { get; set; }
+    [Parameter] public EventCallback OnClearCache { get; set; }
 
     [Parameter] public double ScoreThreshold { get; set; }
     [Parameter] public EventCallback<double> ScoreThresholdChanged { get; set; }

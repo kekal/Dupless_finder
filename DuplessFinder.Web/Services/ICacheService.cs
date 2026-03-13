@@ -13,4 +13,5 @@ public interface ICacheService : IAsyncDisposable
     Task PutSiftDescriptorAsync(string fingerprint, byte[] data, int rows, int cols);
     Task<List<SimilarityEntry>> GetAllSimilarityResultsAsync();
     Task StoreSimilarityBatchAsync(IEnumerable<SimilarityEntry> entries);
+    Task ClearAllAsync();
 }
