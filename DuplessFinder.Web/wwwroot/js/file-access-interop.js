@@ -7,6 +7,7 @@ const supportedExtensions = new Set([
 const deletedFolder = '.deleted';
 
 let rootDirHandle = null;
+const pickedFiles = new Map(); // name -> File (from <input type="file">)
 
 export function isFileSystemAccessSupported() {
     return 'showDirectoryPicker' in window;
@@ -32,6 +33,75 @@ export async function pickDirectory() {
         console.error('[file-access] Error picking directory:', err);
         throw err;
     }
+}
+
+export function clickElement(element) {
+    element.click();
+}
+
+export async function pickFiles(inputElement) {
+    pickedFiles.clear();
+    const results = [];
+
+    for (const file of inputElement.files) {
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (!supportedExtensions.has(ext)) continue;
+
+        pickedFiles.set(file.name, file);
+        results.push({
+            path: file.name,
+            name: file.name,
+            size: file.size,
+            lastModified: file.lastModified
+        });
+    }
+
+    console.log(`[file-access] Picked ${results.length} image(s) via file input.`);
+
+    // Reset input so re-selecting the same files triggers onchange again
+    inputElement.value = '';
+
+    return results;
+}
+
+export async function ensureDirectoryAccess() {
+    if (rootDirHandle) return true;
+
+    if (!('showDirectoryPicker' in window)) return false;
+
+    try {
+        rootDirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        console.log('[file-access] Directory access granted:', rootDirHandle.name);
+        return true;
+    } catch (err) {
+        if (err.name === 'AbortError') {
+            console.log('[file-access] User cancelled directory picker.');
+            return false;
+        }
+        console.error('[file-access] Error getting directory access:', err);
+        return false;
+    }
+}
+
+export async function resolvePathByFingerprint(fingerprint, fileName) {
+    if (!rootDirHandle) return null;
+
+    const results = [];
+    await enumerateDir(rootDirHandle, '', true, results);
+
+    // Prefer match by fingerprint + name
+    for (const entry of results) {
+        const fp = `${entry.size}_${entry.lastModified}`;
+        if (fp === fingerprint && entry.name === fileName) return entry.path;
+    }
+
+    // Fallback: fingerprint only
+    for (const entry of results) {
+        const fp = `${entry.size}_${entry.lastModified}`;
+        if (fp === fingerprint) return entry.path;
+    }
+
+    return null;
 }
 
 export async function scanImages(includeSubfolders) {
@@ -83,6 +153,13 @@ async function resolveFile(dirHandle, relativePath) {
 }
 
 export async function readFileBytes(relativePath) {
+    // Check picked files first (from <input type="file">)
+    const picked = pickedFiles.get(relativePath);
+    if (picked) {
+        const buffer = await picked.arrayBuffer();
+        return new Uint8Array(buffer);
+    }
+
     if (!rootDirHandle) {
         throw new Error('[file-access] No directory selected.');
     }
@@ -189,6 +266,12 @@ export async function restoreFromDeleted(originalPath, deletedName) {
 }
 
 export async function createObjectUrl(relativePath) {
+    // Check picked files first (from <input type="file">)
+    const picked = pickedFiles.get(relativePath);
+    if (picked) {
+        return URL.createObjectURL(picked);
+    }
+
     if (!rootDirHandle) {
         throw new Error('[file-access] No directory selected.');
     }

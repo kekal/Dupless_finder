@@ -1,14 +1,11 @@
 <div class="toolbar">
-    <label class="toolbar-checkbox" title="When checked, searches all subfolders recursively">
-        <input type="checkbox" checked="@IncludeSubfolders"
-               @onchange="OnCheckboxChanged" />
-        <span class="checkbox-label">Include subfolders</span>
-    </label>
+    <input type="file" multiple accept="image/*"
+           @ref="_fileInput"
+           @onchange="OnFileInputChange"
+           style="display:none" />
 
-    <div class="toolbar-separator"></div>
-
-    <button class="toolbar-btn" @onclick="OnOpen" title="Open folder and scan for images">
-        Open Folder
+    <button class="toolbar-btn" @onclick="TriggerFilePick" title="Select images to scan">
+        Open
     </button>
 
     <button class="toolbar-btn" @onclick="OnAnalyze" title="Re-analyze images (SIFT matching)">
@@ -61,8 +58,10 @@
     }
 </div>
 
+@inject IFileAccessService FileAccess
+
 @code {
-    [Parameter] public EventCallback OnOpen { get; set; }
+    [Parameter] public EventCallback<ElementReference> OnFilesSelected { get; set; }
     [Parameter] public EventCallback OnAnalyze { get; set; }
     [Parameter] public EventCallback OnCancel { get; set; }
     [Parameter] public EventCallback OnUndo { get; set; }
@@ -74,16 +73,19 @@
     [Parameter] public string StatusText { get; set; } = "Ready";
     [Parameter] public bool IsProgressVisible { get; set; }
 
-    [Parameter] public bool IncludeSubfolders { get; set; }
-    [Parameter] public EventCallback<bool> IncludeSubfoldersChanged { get; set; }
-
     [Parameter] public bool ShowUndo { get; set; }
     [Parameter] public bool CanCancel { get; set; }
 
-    private async Task OnCheckboxChanged(ChangeEventArgs e)
+    private ElementReference _fileInput;
+
+    private async Task TriggerFilePick()
     {
-        var newValue = (bool)(e.Value ?? false);
-        await IncludeSubfoldersChanged.InvokeAsync(newValue);
+        await FileAccess.ClickElementAsync(_fileInput);
+    }
+
+    private async Task OnFileInputChange()
+    {
+        await OnFilesSelected.InvokeAsync(_fileInput);
     }
 
     private async Task OnSliderInput(ChangeEventArgs e)

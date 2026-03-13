@@ -1,9 +1,12 @@
+using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 
 namespace DuplessFinder.Web.Services;
 
 public class FileAccessService : IFileAccessService
 {
+    private static readonly string CacheBuster = Guid.NewGuid().ToString("N")[..8];
+
     private readonly IJSRuntime _js;
     private readonly ILogger<FileAccessService> _logger;
     private IJSObjectReference? _module;
@@ -20,7 +23,7 @@ public class FileAccessService : IFileAccessService
     {
         if (_module is not null) return _module;
         await _moduleLock.WaitAsync();
-        try { return _module ??= await _js.InvokeAsync<IJSObjectReference>("import", "./js/file-access-interop.js"); }
+        try { return _module ??= await _js.InvokeAsync<IJSObjectReference>("import", $"./js/file-access-interop.js?v={CacheBuster}"); }
         finally { _moduleLock.Release(); }
     }
 
@@ -44,6 +47,63 @@ public class FileAccessService : IFileAccessService
             _logger.LogError(ex, "PickDirectoryAsync failed: {Message}", ex.Message);
             return null;
         }
+    }
+
+    public async Task<List<FileEntry>> PickFilesAsync(ElementReference inputElement)
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(FileAccessService));
+
+        try
+        {
+            var mod = await GetModuleAsync();
+            var entries = await mod.InvokeAsync<List<FileEntry>?>("pickFiles", inputElement);
+            return entries ?? [];
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "PickFilesAsync failed: {Message}", ex.Message);
+            return [];
+        }
+    }
+
+    public async Task<bool> EnsureDirectoryAccessAsync()
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(FileAccessService));
+
+        try
+        {
+            var mod = await GetModuleAsync();
+            return await mod.InvokeAsync<bool>("ensureDirectoryAccess");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "EnsureDirectoryAccessAsync failed: {Message}", ex.Message);
+            return false;
+        }
+    }
+
+    public async Task<string?> ResolvePathByFingerprintAsync(string fingerprint, string fileName)
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(FileAccessService));
+
+        try
+        {
+            var mod = await GetModuleAsync();
+            return await mod.InvokeAsync<string?>("resolvePathByFingerprint", fingerprint, fileName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "ResolvePathByFingerprintAsync failed: {Message}", ex.Message);
+            return null;
+        }
+    }
+
+    public async Task ClickElementAsync(ElementReference element)
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(FileAccessService));
+
+        var mod = await GetModuleAsync();
+        await mod.InvokeVoidAsync("clickElement", element);
     }
 
     public async Task<List<FileEntry>> ScanImagesAsync(bool includeSubfolders)

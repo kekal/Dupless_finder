@@ -8,7 +8,7 @@
 <PageTitle>Dupless Finder</PageTitle>
 
 <div class="app-layout">
-    <Toolbar OnOpen="OpenFolder"
+    <Toolbar OnFilesSelected="OpenFiles"
              OnAnalyze="Analyze"
              OnCancel="Cancel"
              OnUndo="Undo"
@@ -17,8 +17,6 @@
              Progress="@_calcProgress"
              StatusText="@_statusText"
              IsProgressVisible="@_isProgressVisible"
-             IncludeSubfolders="@_includeSubfolders"
-             IncludeSubfoldersChanged="OnIncludeSubfoldersChanged"
              ShowUndo="@(_undoStack.Count > 0)"
              CanCancel="@(_cts is not null && !_cts.IsCancellationRequested)" />
 
@@ -65,7 +63,7 @@
     private string _statusText = "Ready";
     private string? _warningText;
     private bool _isProgressVisible;
-    private bool _includeSubfolders;
+
     private string? _previewImageUrl;
     private string? _alternateImageUrl;
     private Stack<(string originalPath, string deletedName)> _undoStack = new();
@@ -77,25 +75,17 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var isSupported = await FileAccess.IsFileSystemAccessSupportedAsync();
-        if (!isSupported)
-        {
-            _statusText = "File System Access API is not supported in this browser.";
-            StateHasChanged();
-            return;
-        }
-
         await Cache.InitializeAsync();
     }
 
-    private async Task OpenFolder()
+    private async Task OpenFiles(ElementReference inputRef)
     {
-        var dirName = await FileAccess.PickDirectoryAsync();
-        if (dirName is null) return;
-        await LoadFolderContent();
+        var fileEntries = await FileAccess.PickFilesAsync(inputRef);
+        if (fileEntries.Count == 0) return;
+        await LoadContent(fileEntries);
     }
 
-    private async Task LoadFolderContent()
+    private async Task LoadContent(List<FileEntry> fileEntries)
     {
         if (_cts is not null)
         {
@@ -118,14 +108,9 @@
 
         try
         {
-            // Phase 1: Scan for images
-            _statusText = "Scanning folder...";
-            StateHasChanged();
-
-            var fileEntries = await FileAccess.ScanImagesAsync(_includeSubfolders);
             if (fileEntries.Count == 0)
             {
-                _statusText = "No images found in selected folder.";
+                _statusText = "No images found.";
                 _isProgressVisible = false;
                 StateHasChanged();
                 return;
@@ -319,14 +304,32 @@
 
         try
         {
+            // Ensure directory access for deletion (prompts user on first delete)
+            var hasAccess = await FileAccess.EnsureDirectoryAccessAsync();
+            if (!hasAccess)
+            {
+                _statusText = "Directory access required to delete files. Please grant access when prompted.";
+                StateHasChanged();
+                return;
+            }
+
+            // Resolve the real path in the directory by fingerprint
+            var realPath = await FileAccess.ResolvePathByFingerprintAsync(img.Fingerprint, img.Name);
+            if (realPath is null)
+            {
+                _statusText = $"Could not find '{img.Name}' in the selected directory.";
+                StateHasChanged();
+                return;
+            }
+
             if (img.ThumbnailDataUrl is not null && img.ThumbnailDataUrl.StartsWith("blob:"))
             {
                 await FileAccess.RevokeObjectUrlAsync(img.ThumbnailDataUrl);
             }
 
-            var deletedName = await FileAccess.MoveToDeletedAsync(img.Path);
+            var deletedName = await FileAccess.MoveToDeletedAsync(realPath);
 
-            _undoStack.Push((img.Path, deletedName));
+            _undoStack.Push((realPath, deletedName));
 
             await ClosePreviewAsync();
 
@@ -367,7 +370,7 @@
         {
             await FileAccess.RestoreFromDeletedAsync(originalPath, deletedName);
 
-            var restoredEntries = await FileAccess.ScanImagesAsync(_includeSubfolders);
+            var restoredEntries = await FileAccess.ScanImagesAsync(true);
             var restoredEntry = restoredEntries.FirstOrDefault(fe => fe.Path == originalPath);
 
             if (restoredEntry is not null)
@@ -417,10 +420,6 @@
         }, null, 200, Timeout.Infinite);
     }
 
-    private void OnIncludeSubfoldersChanged(bool value)
-    {
-        _includeSubfolders = value;
-    }
 
     private async Task OnThumbnailDoubleClick(ImageInfo img)
     {
