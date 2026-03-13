@@ -3,10 +3,10 @@ services:
     build: .
     container_name: dupless-finder
     ports:
-      - "8080:8080"
+      - "8888:8888"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8080"]
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:8888"]
       interval: 30s
       timeout: 5s
       retries: 3
