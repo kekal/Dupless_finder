@@ -448,6 +448,113 @@ html, body {
     background: #2a2a2a;
 }
 
+/* --- Mobile Responsive --- */
+@media (max-width: 768px) {
+    .content-area {
+        flex-direction: column;
+    }
+
+    .left-panel {
+        width: 100%;
+        min-width: unset;
+        max-width: unset;
+        border-right: none;
+        flex: 1;
+    }
+
+    .right-panel {
+        display: none;
+    }
+
+    .right-panel:has(.preview-overlay) {
+        display: block;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 100;
+        background: #222;
+    }
+
+    .thumbnail-grid {
+        justify-content: center;
+    }
+
+    .thumbnail-cell {
+        width: calc(33.333% - 8px);
+        height: auto;
+        min-width: 90px;
+    }
+
+    .thumbnail-image-wrapper {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 1;
+    }
+
+    .thumbnail-image-wrapper img {
+        max-width: 100%;
+        max-height: 100%;
+    }
+
+    .thumbnail-filename {
+        max-width: 100%;
+        font-size: 9px;
+    }
+
+    .toolbar {
+        gap: 4px;
+        padding: 4px;
+        min-height: 32px;
+    }
+
+    .toolbar-btn {
+        font-size: 11px;
+        padding: 3px 6px;
+    }
+
+    .toolbar-slider {
+        width: 80px;
+    }
+
+    .toolbar-progress-container {
+        width: 100px;
+    }
+
+    .toolbar-status {
+        max-width: 150px;
+        font-size: 10px;
+    }
+
+    .pair-row {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .pair-image-wrapper {
+        width: calc(50vw - 40px);
+        height: calc(50vw - 40px);
+    }
+
+    .pair-image-wrapper img {
+        max-width: 100%;
+        max-height: 100%;
+    }
+
+    .pair-filename {
+        max-width: calc(50vw - 40px);
+    }
+
+    .preview-close-btn {
+        top: 8px;
+        right: 8px;
+        padding: 10px 20px;
+        font-size: 16px;
+        z-index: 110;
+    }
+}
+
 #blazor-error-ui {
     background: #2d2d2d;
     color: #e0e0e0;

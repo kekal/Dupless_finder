@@ -1,6 +1,6 @@
 <div class="thumbnail-grid">
     <Virtualize Items="@Images" Context="image" OverscanCount="10">
-        <div class="thumbnail-cell" @key="image" @ondblclick="() => HandleDoubleClick(image)">
+        <div class="thumbnail-cell" @key="image" @onclick="() => HandleClick(image)">
             <div class="thumbnail-image-wrapper">
                 @if (image.ThumbnailDataUrl is not null)
                 {
@@ -26,7 +26,7 @@
     [Parameter] public EventCallback<ImageInfo> OnImageClick { get; set; }
     [Parameter] public EventCallback<ImageInfo> OnDeleteImage { get; set; }
 
-    private async Task HandleDoubleClick(ImageInfo image)
+    private async Task HandleClick(ImageInfo image)
     {
         await OnImageClick.InvokeAsync(image);
     }

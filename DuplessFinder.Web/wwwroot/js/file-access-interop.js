@@ -297,6 +297,81 @@ export async function createObjectUrl(relativePath) {
     }
 }
 
+// --- STUB: Generate test images for development ---
+export async function loadStubFiles() {
+    pickedFiles.clear();
+    const stubNames = [
+        'IMG20250830160310.jpg',
+        'IMG20250830160658.jpg',
+        'IMG20250830160853.jpg',
+        'IMG20250830161132.jpg',
+        'IMG20250412175034.jpg',
+        'IMG20250412175520.jpg',
+        'IMG20250412175525.jpg',
+        'IMG20250412175720.jpg',
+        'IMG20250412175722.jpg',
+        'IMG20250830155736.jpg'
+    ];
+    const colors = [
+        ['#c0392b','#e74c3c'], ['#d35400','#e67e22'], ['#e67e22','#f39c12'], ['#f39c12','#f1c40f'],
+        ['#27ae60','#2ecc71'], ['#16a085','#1abc9c'], ['#2980b9','#3498db'], ['#8e44ad','#9b59b6'],
+        ['#2c3e50','#34495e'], ['#c0392b','#8e44ad']
+    ];
+    const results = [];
+
+    for (let i = 0; i < stubNames.length; i++) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 640;
+        canvas.height = 480;
+        const ctx = canvas.getContext('2d');
+
+        // Gradient background
+        const grad = ctx.createLinearGradient(0, 0, 640, 480);
+        grad.addColorStop(0, colors[i][0]);
+        grad.addColorStop(1, colors[i][1]);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 640, 480);
+
+        // Decorative shapes
+        ctx.globalAlpha = 0.15;
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(160 + i * 40, 200, 120, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(480 - i * 30, 300, 80, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+
+        // Text
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 28px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = 4;
+        ctx.fillText(stubNames[i], 320, 220);
+        ctx.font = '22px sans-serif';
+        ctx.fillText('Test Image ' + (i + 1), 320, 260);
+        ctx.shadowBlur = 0;
+
+        const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
+        const file = new File([blob], stubNames[i], {
+            type: 'image/jpeg',
+            lastModified: Date.now() - i * 86400000
+        });
+        pickedFiles.set(file.name, file);
+        results.push({
+            path: file.name,
+            name: file.name,
+            size: file.size,
+            lastModified: file.lastModified
+        });
+    }
+
+    console.log('[file-access] Loaded ' + results.length + ' stub images.');
+    return results;
+}
+
 export function revokeObjectUrl(url) {
     try {
         URL.revokeObjectURL(url);

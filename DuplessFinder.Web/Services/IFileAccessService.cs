@@ -18,4 +18,5 @@ public interface IFileAccessService : IAsyncDisposable
     Task RevokeObjectUrlAsync(string url);
     Task<bool> IsFileSystemAccessSupportedAsync();
     Task ClickElementAsync(ElementReference element);
+    Task<List<FileEntry>> LoadStubFilesAsync();
 }

@@ -207,6 +207,23 @@ public class FileAccessService : IFileAccessService
         }
     }
 
+    public async Task<List<FileEntry>> LoadStubFilesAsync()
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(FileAccessService));
+
+        try
+        {
+            var mod = await GetModuleAsync();
+            var entries = await mod.InvokeAsync<List<FileEntry>?>("loadStubFiles");
+            return entries ?? [];
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "LoadStubFilesAsync failed: {Message}", ex.Message);
+            return [];
+        }
+    }
+
     public async Task<bool> IsFileSystemAccessSupportedAsync()
     {
         if (_disposed) throw new ObjectDisposedException(nameof(FileAccessService));
